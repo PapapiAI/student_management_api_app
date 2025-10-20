@@ -91,7 +91,7 @@ Nếu mỗi API trả về format khác nhau, phía frontend hoặc mobile app s
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApiResponse<T> {
     boolean success;
-    T data;
+    T data; // List/Object/Null
     ApiError error;
 
     @Builder.Default
