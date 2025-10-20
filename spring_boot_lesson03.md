@@ -40,32 +40,105 @@ Client → Controller → Service → Repository → Database
 
 ### 2.1 IoC (Inversion of Control)
 
-* Thay vì lập trình viên tự khởi tạo và quản lý object, **Spring Container** làm việc đó.
-* Các object (bean) được tạo, cấu hình, và quản lý vòng đời bởi Spring.
+> * Thay vì lập trình viên tự khởi tạo và quản lý object, **Spring Container** làm việc đó.
+> * Các object (bean) được tạo, cấu hình, và quản lý vòng đời bởi Spring.
 
 ### 2.2 Dependency Injection
 
-* Là quá trình Spring **tự động truyền (inject)** các dependency cần thiết vào class.
+#### 2.2.1 Khái niệm
 
-Ví dụ:
+> * Dependency Injection (DI) là cơ chế Spring tự động truyền (inject) các đối tượng mà một class phụ thuộc, thay vì lập trình viên phải tự khởi tạo (new) thủ công.
+> * DI giúp Spring chịu trách nhiệm quản lý vòng đời (lifecycle) và mối quan hệ phụ thuộc giữa các bean trong ứng dụng
+
+**Ví dụ**
+  * `StudentService` cần sử dụng `StudentRepository`
+  * Thay vì phải viết `StudentRepository repo = new StudentRepository();` 
+
+→ Spring sẽ tự tạo instance và inject nó vào StudentService
+
+#### 2.2.2 Cơ chế Spring thực hiện DI
+
+> Spring Boot có cơ chế IoC Container (Inversion of Control Container) để quản lý toàn bộ bean (đối tượng được Spring tạo ra và quản lý)
+> * Khi ứng dụng khởi động, Spring quét các class có annotation như `@Component`, `@Service`, `@Repository`, `@Controller`
+> * Các bean được tạo và lưu trong `ApplicationContext`
+> * Khi một bean cần phụ thuộc vào bean khác, Spring **tự động inject** phụ thuộc đó
 
 ```java
 @Service
 public class StudentService {
-    private final StudentRepository repo;
+  private final StudentRepository repo;
 
-    @Autowired  // Tự động inject repository vào service
-    public StudentService(StudentRepository repo) {
+  // Constructor Injection (nên dùng)
+  @Autowired
+  public StudentService(StudentRepository repo) {
+    this.repo = repo;
+  }
+
+  public List<Student> getAllStudents() {
+    return repo.findAll();
+  }
+}
+```
+
+#### 2.2.3 Các cách Inject phổ biến
+
+| Kiểu Injection        | Cách viết                                                              | Ưu điểm                                         | Hạn chế                                       |
+|-----------------------|------------------------------------------------------------------------|-------------------------------------------------|-----------------------------------------------|
+| Constructor Injection | Inject qua hàm khởi tạo (`@Autowired` hoặc `@RequiredArgsConstructor`) | An toàn (`final field`), dễ test, không bị null | Cách được khuyên dùng                         |
+| Field Injection       | `@Autowired` trực tiếp trên thuộc tính                                 | Ngắn gọn, dễ viết                               | Khó test (không thể inject mock), không final |
+| Setter Injection      | Inject qua setter method                                               | Linh hoạt, dùng khi dependency tùy chọn         | Dễ bị bỏ qua nếu không gọi setter             |
+
+
+**Ví dụ từng cách**
+
+**1. Constructor Injection (nên dùng)**
+
+```java
+@Service
+@RequiredArgsConstructor // Lombok tự tạo constructor cho final fields
+public class StudentService {
+    private final StudentRepository repo;
+}
+```
+
+> * Annotation `@RequiredArgsConstructor`: của Lombok, giúp tự tạo constructor cho final fields
+> * Annotation `@Service`: của Spring, giúp Spring tạo Bean cho tầng Service
+> * Annotation `@Repository`: của Spring, giúp Spring tạo Bean cho tầng Repository
+> * Annotation `@Component`: của Spring, đánh dấu một class bất kỳ là Spring Bean (tổng quát)  
+
+**2. Field Injection**
+
+```java
+@Service
+public class StudentService {
+  @Autowired
+  private StudentRepository repo;
+}
+```
+
+**3. Setter Injection**
+
+```java
+@Service
+public class StudentService {
+    private StudentRepository repo;
+
+    @Autowired
+    public void setRepo(StudentRepository repo) {
         this.repo = repo;
     }
 }
 ```
 
-**Các cách inject phổ biến:**
+#### 2.2.3 Thuật ngữ cần nhớ đối với Dependency Injection
 
-1. **Constructor Injection (được khuyên dùng)** – An toàn và dễ test.
-2. **Field Injection (@Autowired trực tiếp trên field)** – Ngắn gọn nhưng khó test.
-3. **Setter Injection** – Phù hợp khi dependency tùy chọn.
+| Thuật ngữ               | Ý nghĩa                                             |
+|-------------------------|-----------------------------------------------------|
+| `Bean`                  | Là object được Spring quản lý                       |
+| `IoC Container`         | Là nơi Spring lưu và quản lý các bean               |
+| `Dependency Injection`  | Là hành động Spring “tiêm” bean cần thiết vào class |
+| `@Autowired`            | Annotation để Spring biết cần inject dependency     |
+| `Constructor Injection` | Cách inject tốt nhất, nên dùng mặc định             |
 
 ---
 
@@ -75,69 +148,153 @@ public class StudentService {
 
 ```
 src/main/java/student/management/api_app/
- ├── controller/StudentController.java
+ ├── controller/student/StudentController.java
  ├── service/StudentService.java
  ├── repository/StudentRepository.java
  ├── model/Student.java
- ├── dto/StudentRequest.java
- └── dto/StudentResponse.java
+ ├── dto/student/StudentCreateRequest.java
+ ├── dto/student/StudentUpdateRequest.java
+ └── dto/student/StudentResponse.java
 ```
 
 ---
 
 ### 3.2 Model và DTO
 
+#### 3.2.1 Model: `Student`
+
+> Vì là In-Memory, `Student` tạm thời là Domain Model thuần (chưa cần @Entity)
+> * Các thuộc tính:
+>   * `id` kiểu UUID, tự động tạo trong Service (in-memory)
+>   * `fullName`, `dob`, `email`, `createdAt`, `updatedAt`
+> * Nghiệp vụ:
+>   * Tuổi học viên phải từ 16t trở lên
+>   * Lưu lại thời điểm tạo mới và update học viên 
+
 ```java
 // model/Student.java
-package com.example.studentapp.model;
 
-import lombok.*;
-import java.util.UUID;
-
-@Data
-@Builder
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
+@FieldDefaults(level = AccessLevel.PRIVATE)
 public class Student {
-    private UUID id;
-    private String fullname;
-    private String email;
-    private Integer age;
+  UUID id;
+  String fullName;
+  Integer age;
+  String email;
+
+  Instant createdAt;
+  Instant updatedAt;
+
+  // === Business helpers ===
+  public boolean isAdult() {
+    return age != null && age >= 18;
+  }
+
+  public void onCreate() {
+    Instant now = Instant.now();
+    this.createdAt = now;
+    this.updatedAt = now;
+  }
+
+  public void onUpdate() {
+    this.updatedAt = Instant.now();
+  }
 }
 ```
 
+> * Annotation `@Getter`: của Lombok, tự động tạo getter methods cho tất cả thuộc tính
+> * Annotation `@Setter`: tương tự `@Getter` → tự tạo setter methods
+> * Annotation `@NoArgsConstructor`: của Lombok, tự tạo constructor không tham số
+> * Annotation `@AllArgsConstructor`: tương tự `@NoArgsConstructor` → tự tạo constructor có đủ tham số cho tất cả field
+
+#### 3.2.2 DTO
+
+> * `DTO (Data Transfer Object)` là lớp dùng để nhận dữ liệu từ client (`request`) hoặc trả dữ liệu về client (`response`)
+> * Nó **KHÔNG** chứa logic nghiệp vụ, chỉ có nhiệm vụ vận chuyển dữ liệu qua lại giữa client ↔ server
+
+**1. `StudentResponse` → trả về cho client**
+
 ```java
-// dto/StudentRequest.java
-package com.example.studentapp.dto;
+// dto/student/StudentResponse.java
 
-import jakarta.validation.constraints.*;
+public record StudentResponse(
+        UUID id,
+        String fullName,
+        Integer age,
+        String email,
 
-public record StudentRequest(
-    @NotBlank String fullname,
-    @Email String email,
-    @Min(10) @Max(80) Integer age
+        Instant createdAt,
+        Instant updatedAt,
+
+        Boolean adult // computed field
 ) {}
 ```
 
+**Sử dụng `record` thay cho `class`**
+
+> * `record` là một kiểu đặc biệt của `class` được thiết kế để lưu trữ dữ liệu **bất biến** (immutable data carrier)
+> * Tự đông tạo:
+>   * `private final` fields
+>   * `constructor`
+>   * `getters`
+>   * `equals()` / `hashCode()` / `toString()`
+> * Vì là immutable → **KHÔNG** có setters
+> * `record` chỉ nên chứa dữ liệu, không nên xử lý logic nghiệp vụ
+
+**Nên dùng `record` ở đâu**
+
+> Nếu `class` chỉ dùng để mang dữ liệu (data-only), hãy dùng `record` thay cho `class` để code ngắn gọn, rõ ràng và an toàn hơn
+
+| Nơi                           | Dùng `record` | Lý do                                            |
+|-------------------------------|---------------|--------------------------------------------------|
+| `DTO` (`Request`/`Response`)  | Nên           | Dữ liệu chỉ mang tính truyền tải, không thay đổi |
+| `Entity` hoặc `mutable class` | Không nên     | Vì không thể setter hoặc cập nhật                |
+
+**2. `StudentCreateRequest` → POST /students**
+
 ```java
-// dto/StudentResponse.java
-package com.example.studentapp.dto;
+// dto/student/StudentCreateRequest.java
 
-import java.util.UUID;
+public record StudentCreateRequest(
+        String fullName,
+        Integer age,
+        String email
+) {}
+```
 
-public record StudentResponse(UUID id, String fullname, String email, Integer age) {}
+**3. `StudentUpdateRequest` → PUT /students/{id}**
+
+* Có thể chuyển sang sử dụng `record`
+* Ở đây sử dụng `class` kết hợp với `lombok` để so sánh cách dùng
+
+```java
+// dto/student/StudentUpdateRequest.java
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@FieldDefaults(level = AccessLevel.PRIVATE)
+public class StudentUpdateRequest {
+  String fullName;
+  Integer age;
+}
 ```
 
 ---
 
 ### 3.3 Repository Layer (In-memory)
 
-```java
-package com.example.studentapp.repository;
+> * `Repository` là lớp trung gian giữa tầng `Service` và nguồn dữ liệu (`database`).
+    Nó chịu trách nhiệm lưu trữ, truy vấn, cập nhật, xóa dữ liệu
+> * `Service` chỉ cần “gọi `Repository` để lấy hoặc lưu dữ liệu”, không cần biết dữ liệu nằm ở đâu (trong DB thật, hay chỉ là bộ nhớ tạm)
 
-import com.example.studentapp.model.Student;
-import org.springframework.stereotype.Repository;
-import java.util.*;
+```java
+// repository/StudentRepository.java
 
 @Repository
 public class StudentRepository {
@@ -162,6 +319,17 @@ public class StudentRepository {
     }
 }
 ```
+
+**`@Repository` là annotation của Spring framework, giúp Spring:**
+
+> * Tự động tạo `Bean` cho class này (để có thể `@Autowired` ở `Service`)
+> * Đánh dấu class này thuộc tầng `Repository`
+> * Tự động quản lý ngoại lệ (`Exception Translation`) khi làm việc với DB thật (`JPA`/`Hibernate`)
+
+**Dùng `Optional` trong `findById(UUID id)`**
+
+> * `findById(UUID id)` Tìm học viên theo `id` → kết quả có thể `null` nếu `id` không đúng
+> * Dùng kiểu `Optional` để tránh `NullPointerException` → nếu không tìm thấy thì `Optional.ofNullable(db.get(id))` trả về `Optional.empty()`
 
 ---
 
