@@ -23,7 +23,7 @@ public class Student {
 
     // === Business helpers ===
     public boolean isAdult() {
-        return age != null && age >= 18;
+        return age != null && age >= 16;
     }
 
     public void onCreate() {

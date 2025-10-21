@@ -210,6 +210,7 @@ public class Student {
 > * Annotation `@Setter`: tương tự `@Getter` → tự tạo setter methods
 > * Annotation `@NoArgsConstructor`: của Lombok, tự tạo constructor không tham số
 > * Annotation `@AllArgsConstructor`: tương tự `@NoArgsConstructor` → tự tạo constructor có đủ tham số cho tất cả field
+> * `Instant`: Kiểu dữ liệu thời gian, luôn ở `UTC` (múi giờ 0 - ứng với chữ Z ở cuối) → KHÔNG bị phụ thuộc vào múi giờ hệ thống
 
 #### 3.2.2 DTO
 
@@ -330,68 +331,116 @@ public class StudentRepository {
 
 > * `findById(UUID id)` Tìm học viên theo `id` → kết quả có thể `null` nếu `id` không đúng
 > * Dùng kiểu `Optional` để tránh `NullPointerException` → nếu không tìm thấy thì `Optional.ofNullable(db.get(id))` trả về `Optional.empty()`
+>   * Phương thức static `Optional.ofNullable(value)` → tạo ra một `Optional` từ giá trị có thể `null`
+>     * Nếu `value != null` → trả về `Optional` chứa giá trị đó
+>     * Nếu `value == null` → trả về `Optional.empty()` (một Optional rỗng, không có giá trị)
 
 ---
 
 ### 3.4 Service Layer
 
 ```java
-package com.example.studentapp.service;
-
-import com.example.studentapp.dto.*;
-import com.example.studentapp.model.Student;
-import com.example.studentapp.repository.StudentRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-
-import java.util.*;
+// service/StudentService.java
 
 @Service
 @RequiredArgsConstructor
 public class StudentService {
-    private final StudentRepository repo;
 
-    public List<StudentResponse> getAll() {
-        return repo.findAll().stream()
-                .map(s -> new StudentResponse(s.getId(), s.getFullname(), s.getEmail(), s.getAge()))
-                .toList();
+  private final StudentRepository repo;
+
+  // === Helper: map Student → StudentResponse ===
+  private StudentResponse toResponse(Student s) {
+    return new StudentResponse(
+            s.getId(),
+            s.getFullName(),
+            s.getAge(),
+            s.getEmail(),
+            s.getCreatedAt(),
+            s.getUpdatedAt(),
+            s.isAdult()
+    );
+  }
+
+  public List<StudentResponse> getAllStudents() {
+    // Using Stream to handle Collection data
+    return repo.findAll().stream()
+            .map(this::toResponse)
+            .toList();
+  }
+
+  public StudentResponse getStudentById(UUID id) {
+    return repo.findById(id)
+            .map(this::toResponse)
+            .orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Not found student with id: " + id));
+  }
+
+  public StudentResponse createStudent(StudentCreateRequest req) {
+    // Business rule validation
+    if (req.fullName() == null || req.fullName().isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fullName is required");
+    }
+    if (req.age() == null || req.age() < 16) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "age must be greater than 16");
+    }
+    if (req.email() == null || !req.email().contains("@")) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email is invalid");
     }
 
-    public StudentResponse create(StudentRequest req) {
-        Student s = Student.builder()
-                .fullname(req.fullname())
-                .email(req.email())
-                .age(req.age())
-                .build();
-        return map(repo.save(s));
+    Student student = Student.builder()
+            .fullName(req.fullName())
+            .age(req.age())
+            .email(req.email())
+            .build();
+
+    student.onCreate();
+    return toResponse(repo.save(student));
+  }
+
+  public StudentResponse updateStudent(UUID id, StudentUpdateRequest req) {
+    if (req.getFullName() == null || req.getFullName().isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fullName is required");
+    }
+    if (req.getAge() == null || req.getAge() < 16) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "age must be greater than 16");
     }
 
-    public Optional<StudentResponse> getById(UUID id) {
-        return repo.findById(id).map(this::map);
+    Student student = repo.findById(id)
+            .orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Not found student with id: " + id));
+
+    student.setFullName(req.getFullName());
+    student.setAge(req.getAge());
+    student.onUpdate();
+
+    return toResponse(repo.save(student));
+  }
+
+  public void deleteStudent(UUID id) {
+    if (repo.findById(id).isEmpty()) {
+      throw new ResponseStatusException(
+              HttpStatus.NOT_FOUND, "Not found student with id: " + id);
     }
 
-    public Optional<StudentResponse> update(UUID id, StudentRequest req) {
-        return repo.findById(id).map(s -> {
-            s.setFullname(req.fullname());
-            s.setEmail(req.email());
-            s.setAge(req.age());
-            return map(repo.save(s));
-        });
-    }
-
-    public boolean delete(UUID id) {
-        if (repo.findById(id).isPresent()) {
-            repo.deleteById(id);
-            return true;
-        }
-        return false;
-    }
-
-    private StudentResponse map(Student s) {
-        return new StudentResponse(s.getId(), s.getFullname(), s.getEmail(), s.getAge());
-    }
+    repo.deleteById(id);
+  }
 }
 ```
+
+> * `Stream` là một dòng dữ liệu tuần tự cho phép xử lý từng phần tử bằng các thao tác như `map`, `filter`, `sorted`, `forEach`, `collect`, ...
+>   * `students.stream()` → phương thức stream() của Collection chuyển `List<Student>` thành `Stream<Student>`
+>   * `.map(this::toResponse)` → phương thức `map()` chuyển đổi từng phần tử trong `stream` từ kiểu `Student` sang kiểu `StudentResponse`
+>     * `this::toResponse` là method reference, tương đương với `student -> this.toResponse(student)`
+>   * `.toList()` → thu thập (collect) các phần tử trong `stream` thành một `List<StudentResponse>` mới
+> * Các phương thức của Optional
+>   * `map(this::toResponse)`
+>     * Nếu `value == null` → trả về `Optional.empty()`
+>     * Nếu `value != null` → chuyển `student` tìm thấy sang `StudentResponse`
+>   * `orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Not found student with id: " + id))`
+>     * Nếu `value != null` → trả về giá trị đó (đã được map thành StudentResponse)
+>     * Nếu `value == null` → ném ResponseStatusException với mã 404 và message
+>     * Cần truyền vào một `Supplier`
+>       * `Supplier` là một `lambda` không nhận tham số nào, nhưng trả về một giá trị kiểu `T` (ở đây là `ResponseStatusException`)
 
 ---
 
