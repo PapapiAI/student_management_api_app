@@ -114,7 +114,7 @@ public class ApiResponse<T> {
 > * `@Builder.Default`: trong build(), nếu field đó chưa được set thủ công, Lombok gán giá trị mặc định vào
 > * `@JsonInclude(JsonInclude.Include.NON_NULL)`: ẩn các trường null khi serialize sang JSON
 
-* Note: Sẽ giải thích chi tiết hơn về RFC 7807 (Problem Details) ở bài sau
+_Note: Sẽ giải thích chi tiết hơn về `RFC 7807 (Problem Details)` ở bài sau_
 
 ---
 
@@ -162,7 +162,8 @@ http://localhost:8080/swagger-ui.html
 
 ### 3.3 Tuỳ chỉnh thông tin API
 
-* Khai báo trong `application.properties`
+#### 3.3.1 Khai báo trong `application.properties`
+
 ```properties
 # ===== Swagger / OpenAPI =====
 # Info
@@ -188,7 +189,7 @@ openapi.groups.demo.name=demo
 openapi.groups.demo.packages=student.management.api_app.controller.demo1
 ```
 
-* Tạo file `configs/OpenApiConfig.java` để cấu hình tùy chỉnh
+#### 3.3.2 Tạo file `configs/OpenApiConfig.java` để cấu hình tùy chỉnh
 
   > * Tự động sinh ra tài liệu API cho ứng dụng, tùy chỉnh thông tin hiển thị (title, version, description, servers...)
   > * Chia thành nhiều nhóm API
@@ -283,26 +284,60 @@ public class OpenApiConfig {
 >   * Method servers(...) để liệt kê list các môi trường deploy
 > * Các Bean `studentsGroup()` và `demoGroup()`
 >   * Sử dụng `GroupedOpenApi` để tạo nhiều nhóm API riêng biệt trong Swagger UI
->   * Mỗi group được gắn với một package controller
->   * Group `students` quét toàn bộ controller trong package `controller.student`
->   * Group `demo` quét package `controller.demo`
->   * Một group cần nhiều package thì sử dụng dấu phẩy
+>   * `.packagesToScan(...)`: group theo package
+>     * Group `students` quét toàn bộ controller trong package `controller.student`
+>     * Group `demo` quét package `controller.demo1` và `controller.demo2`
+
+_Lưu ý: Một group cần nhiều package thì sử dụng dấu phẩy_
 
 ```properties
 openapi.groups.demo.name=demo
 openapi.groups.demo.packages=student.management.api_app.controller.demo1,student.management.api_app.controller.demo2
 ```
 
-* Tạo mock StudentController để test Swagger UI
+> * Ngoài ra có thể sử dụng `.pathsToMatch("/api/v1/students/**")` để group theo path
+
+#### 3.3.3 Tạo mock StudentController để test Swagger UI
 
 ```java
+// controller/demo1/DemoController1.java
 @RestController
-@RequestMapping("${api.prefix}/students")
-public class StudentController {
-    @GetMapping
-    public ResponseEntity<String> getStudents() {
-        return ResponseEntity.ok("Hello Students");
-    }
+@RequestMapping("${api.prefix}/demo1")
+public class DemoController1 {
+  @GetMapping
+  public ResponseEntity<String> demo1() {
+    return ResponseEntity.ok("Hello Demo1");
+  }
+
+  @GetMapping("/{id}")
+  public ResponseEntity<String> demo1ById(@PathVariable int id) {
+    return ResponseEntity.ok("Hello Demo1 By ID");
+  }
+}
+
+// controller/demo2/DemoController2a.java
+@RestController
+@RequestMapping("${api.prefix}/demo2a")
+public class DemoController2a {
+  @GetMapping
+  public ResponseEntity<String> demo2a() {
+    return ResponseEntity.ok("Hello Demo2a");
+  }
+}
+
+// controller/demo2/DemoController2b.java
+@RestController
+@RequestMapping("${api.prefix}/demo2b")
+public class DemoController2b {
+  @GetMapping
+  public ResponseEntity<?> demo2b() {
+    return ResponseEntity.ok("Hello Demo2b");
+  }
+
+  @GetMapping("/{id}")
+  public ResponseEntity<?> demo2bById(@PathVariable int id) {
+    return ResponseEntity.ok("Hello Demo2b By ID");
+  }
 }
 ```
 
