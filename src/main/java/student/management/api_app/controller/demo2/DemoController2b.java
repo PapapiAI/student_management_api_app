@@ -1,4 +1,4 @@
-package student.management.api_app.controller.demo1;
+package student.management.api_app.controller.demo2;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -7,15 +7,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("${api.prefix}/demo1")
-public class DemoController1 {
+@RequestMapping("${api.prefix}/demo2b")
+public class DemoController2b {
     @GetMapping
-    public ResponseEntity<String> demo1() {
-        return ResponseEntity.ok("Hello Demo1");
+    public ResponseEntity<?> demo2b() {
+        return ResponseEntity.ok("Hello Demo2b");
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<String> demo1ById(@PathVariable int id) {
-        return ResponseEntity.ok("Hello Demo1 By ID");
+    public ResponseEntity<?> demo2bById(@PathVariable int id) {
+        return ResponseEntity.ok("Hello Demo2b By ID");
     }
 }
