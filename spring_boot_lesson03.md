@@ -290,8 +290,8 @@ public class StudentUpdateRequest {
 
 ### 3.3 Repository Layer (In-memory)
 
-> * `Repository` là lớp trung gian giữa tầng `Service` và nguồn dữ liệu (`database`).
-    Nó chịu trách nhiệm lưu trữ, truy vấn, cập nhật, xóa dữ liệu
+> * `Repository` là lớp trung gian giữa tầng `Service` và nguồn dữ liệu `database`
+> * Nó chịu trách nhiệm **lưu trữ**, **truy vấn**, **cập nhật**, **xóa dữ liệu**
 > * `Service` chỉ cần “gọi `Repository` để lấy hoặc lưu dữ liệu”, không cần biết dữ liệu nằm ở đâu (trong DB thật, hay chỉ là bộ nhớ tạm)
 
 ```java
@@ -338,6 +338,23 @@ public class StudentRepository {
 ---
 
 ### 3.4 Service Layer
+
+> * `Service` là tầng trung gian giữa `Controller` và `Repository`, chịu trách nhiệm xử lý logic nghiệp vụ (business logic) của ứng dụng.
+> * Trong `mô hình MVC`, `Service` đóng vai trò "bộ não", nơi diễn ra mọi quy tắc nghiệp vụ trước khi dữ liệu được lưu hoặc trả về client.
+> * `Controller` chỉ tiếp nhận `request` và trả `response`, còn `Service` mới là nơi ra quyết định, tính toán, kiểm tra điều kiện, và gọi `Repository` để truy xuất hoặc lưu dữ liệu.
+> * Nhờ có `Service`, mã nguồn trở nên tách biệt, dễ bảo trì, dễ kiểm thử (unit test) và có thể tái sử dụng ở nhiều nơi khác nhau (ví dụ: dùng chung cho web và mobile API).
+
+#### Vai trò chính của Service
+
+| Nhiệm vụ                                | Mô tả                                                                            |
+|-----------------------------------------|----------------------------------------------------------------------------------|
+| 1. Thực hiện nghiệp vụ (Business Logic) | Kiểm tra dữ liệu đầu vào, ràng buộc tuổi, định dạng email, ...                   |
+| 2. Gọi Repository                       | Đọc/ghi dữ liệu mà không cần biết cấu trúc lưu trữ bên dưới (Map, DB, API ngoài) |
+| 3. Chuyển đổi dữ liệu                   | Biến Student (`Model`) thành StudentResponse (`DTO`) trả cho client              |
+| 4. Quản lý ngoại lệ nghiệp vụ           | Ném `exception` với mã lỗi phù hợp (400, 404, …)                                 |
+| 5. Giữ cho Controller gọn nhẹ           | `Controller` chỉ còn nhiệm vụ định tuyến và nhận/trả dữ liệu                     |
+
+> _**`Repository` biết “cách lưu dữ liệu”, còn `Service` biết “khi nào và vì sao phải lưu dữ liệu”**_
 
 ```java
 // service/StudentService.java
@@ -442,60 +459,183 @@ public class StudentService {
 >     * Cần truyền vào một `Supplier`
 >       * `Supplier` là một `lambda` không nhận tham số nào, nhưng trả về một giá trị kiểu `T` (ở đây là `ResponseStatusException`)
 
+**Note: `Biểu thức lambda` gồm 4 nhóm `functional interface` chính thuộc package `java.util.function`**
+
+| Interface      | Input    | Output         | Mô tả                                      | Ví dụ                                                   |
+|----------------|----------|----------------|--------------------------------------------|---------------------------------------------------------|
+| Supplier<T>    | Không có | Trả về T       | Cung cấp giá trị (không nhận input)        | `() -> "Hello"` / <br/>`() -> new Student("Ben", 18)`   |
+| Consumer<T>    | Nhận T   | void           | Tiêu thụ giá trị (chỉ thực hiện hành động) | `x -> System.out.println(x)`                            |
+| Function<T, R> | Nhận T   | Trả về R       | Biến đổi từ T → R                          | `x -> x.length()` / <br/>`user -> toUserResponse(user)` |
+| Predicate<T>   | Nhận T   | Trả về boolean | Kiểm tra điều kiện                         | `x -> x > 0`                                            |
+
 ---
 
 ### 3.5 Controller Layer
 
+> * `Controller` là tầng đầu tiên trong ứng dụng Spring Boot, chịu trách nhiệm tiếp nhận và xử lý các `HTTP request` từ client (frontend, Postman, mobile app, ...)
+> * Nhiệm vụ chính của `Controller` là định tuyến (routing) request đến đúng phương thức xử lý và gọi `Service` để thực hiện nghiệp vụ
+> * `Controller` **KHÔNG** xử lý logic nghiệp vụ hay truy cập dữ liệu trực tiếp — nó chỉ đóng vai trò trung gian giữa người dùng và hệ thống `backend`
+
+#### Vai trò chính của Controller
+
+| Nhiệm vụ                           | Mô tả                                                                                                              |
+|------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| 1. Định tuyến HTTP                 | Dùng các annotation như `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping` để ánh xạ URL → phương thức |
+| 2. Tiếp nhận dữ liệu đầu vào       | Nhận tham số từ URL (`@PathVariable`), query (`@RequestParam`), hoặc JSON body (`@RequestBody`)                    |
+| 3. Gọi Service thực hiện nghiệp vụ | Gửi dữ liệu cho `Service`, nhận kết quả trả về                                                                     |
+| 4. Trả phản hồi HTTP cho client    | Dùng `ResponseEntity` để trả `JSON` cùng mã trạng thái (200, 201, 404, 204, …)                                     |
+| 5. Giữ Controller “mỏng”           | Không chứa logic nghiệp vụ, chỉ làm nhiệm vụ “điều phối” dữ liệu qua lại                                           |
+
 ```java
-package com.example.studentapp.controller;
-
-import com.example.studentapp.dto.*;
-import com.example.studentapp.service.StudentService;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.*;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.*;
-
 @RestController
-@RequestMapping("/api/v1/students")
+@RequestMapping("${api.prefix}/students")
+@Tag(name = "Student Management", description = "Student Management API")
 @RequiredArgsConstructor
 public class StudentController {
-    private final StudentService service;
+  private final StudentService service;
 
-    @GetMapping
-    public ResponseEntity<List<StudentResponse>> getAll() {
-        return ResponseEntity.ok(service.getAll());
-    }
+  @Operation(
+          summary = "Get student list",
+          description = "Bài thực hành buổi 3: Thiết kế API `GET /api/v1/students` in-memory",
+          responses = {
+                  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                          responseCode = "200",
+                          description = "Success"
+                  )
+          }
+  )
+  @GetMapping
+  public ResponseEntity<ApiResponse<List<StudentResponse>>> getStudents() {
+    List<StudentResponse> list = service.getAllStudents();
 
-    @GetMapping("/{id}")
-    public ResponseEntity<?> getById(@PathVariable UUID id) {
-        return service.getById(id)
-                .<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body("Student not found"));
-    }
+    ApiResponse<List<StudentResponse>> response = ApiResponse.<List<StudentResponse>>builder()
+            .success(true)
+            .data(list)
+            .error(null)
+            .build();
 
-    @PostMapping
-    public ResponseEntity<StudentResponse> create(@Valid @RequestBody StudentRequest req) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(req));
-    }
+    return ResponseEntity.ok(response);
+  }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<?> update(@PathVariable UUID id, @Valid @RequestBody StudentRequest req) {
-        return service.update(id, req)
-                .<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body("Student not found"));
-    }
+  @Operation(
+          summary = "Get student by id",
+          description = "Bài thực hành buổi 3: Thiết kế API `GET /api/v1/students/id` in-memory",
+          responses = {
+                  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                          responseCode = "200",
+                          description = "Found"
+                  ),
+                  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                          responseCode = "404",
+                          description = "Not found",
+                          content = @Content(schema = @Schema(implementation = ApiResponse.ApiError.class))
+                  )
+          }
+  )
+  @GetMapping("/{id}")
+  public ResponseEntity<ApiResponse<StudentResponse>> getById(@PathVariable UUID id) {
+    StudentResponse student = service.getStudentById(id);
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable UUID id) {
-        return service.delete(id)
-                ? ResponseEntity.noContent().build()
-                : ResponseEntity.status(HttpStatus.NOT_FOUND).body("Student not found");
-    }
+    ApiResponse<StudentResponse> response = ApiResponse.<StudentResponse>builder()
+            .success(true).data(student).build();
+
+    return ResponseEntity.ok(response);
+  }
+
+  @Operation(
+          summary = "Create student",
+          description = "Bài thực hành buổi 3: Thiết kế API `POST /api/v1/students` in-memory",
+          responses = {
+                  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                          responseCode = "201",
+                          description = "Created"
+                  ),
+                  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                          responseCode = "400",
+                          description = "Validation failed",
+                          content = @Content(schema = @Schema(implementation = ApiResponse.ApiError.class))
+                  )
+          }
+  )
+  @PostMapping
+  public ResponseEntity<ApiResponse<StudentResponse>> create(@RequestBody StudentCreateRequest req) {
+    StudentResponse created = service.createStudent(req);
+
+    URI location = ServletUriComponentsBuilder
+            .fromCurrentRequest()
+            .path("/{id}")
+            .buildAndExpand(created.id())
+            .toUri();
+
+    return ResponseEntity.created(location).body(ApiResponse.<StudentResponse>builder()
+            .success(true).data(created).build());
+  }
+
+  @Operation(
+          summary = "Create student",
+          description = "Bài thực hành buổi 3: Thiết kế API `PUT /api/v1/students/id` in-memory",
+          responses = {
+                  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                          responseCode = "200",
+                          description = "Updated"
+                  ),
+                  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                          responseCode = "404",
+                          description = "Not found",
+                          content = @Content(schema = @Schema(implementation = ApiResponse.ApiError.class))
+                  ),
+                  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                          responseCode = "400",
+                          description = "Validation failed",
+                          content = @Content(schema = @Schema(implementation = ApiResponse.ApiError.class))
+                  )
+          }
+  )
+  @PutMapping("/{id}")
+  public ResponseEntity<ApiResponse<StudentResponse>> update(
+          @PathVariable UUID id,
+          @RequestBody StudentUpdateRequest req
+  ) {
+    StudentResponse updated = service.updateStudent(id, req);
+
+    return ResponseEntity.ok(ApiResponse.<StudentResponse>builder()
+            .success(true).data(updated).build());
+  }
+
+  @Operation(
+          summary = "Delete student",
+          description = "Bài thực hành buổi 3: Thiết kế API `DELETE /api/v1/students/id` in-memory",
+          responses = {
+                  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                          responseCode = "204",
+                          description = "Deleted"
+                  ),
+                  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                          responseCode = "404",
+                          description = "Not found",
+                          content = @Content(schema = @Schema(implementation = ApiResponse.ApiError.class))
+                  )
+          }
+  )
+  @DeleteMapping("/{id}")
+  public ResponseEntity<Void> delete(@PathVariable UUID id) {
+    service.deleteStudent(id);
+    return ResponseEntity.noContent().build();
+  }
 }
 ```
+
+> * `ApiResponse.<List<StudentResponse>>builder()`: gán kiểu `List<StudentResponse>` cho method `builder()` khi gọi
+>   * Vị trí gán kiểu: phía trước method
+> * API `POST` tạo mới học viên: Trả về `201 Created` + Location (`URI`) trong header 
+>   * Header có thêm `Location: http://localhost:8080/api/v1/user/{id}`
+>   * Client chỉ cần đọc header `Location` là biết resource mới tạo nằm ở đâu
+>   * Sử dụng `ServletUriComponentsBuilder` để build URI động
+>     * `.fromCurrentRequest()`: Lấy ra URL hiện tại của request thông qua `HttpServletRequest` (`http://localhost:8080/api/v1/students`)
+>     * `.path("/{id}")`: Nối thêm một đoạn path mới vào cuối URL hiện tại (`http://localhost:8080/api/v1/students/{id}`)
+>     * `.buildAndExpand(created.id())`: Thay thế {id} bằng giá trị UUID thực tế được lấy từ `created.id()` (`http://localhost:8080/api/v1/students/3fa85f64-5717-4562-b3fc-2c963f66afa6`)
+>     * `.toUri()`: Chuyển đổi chuỗi URL trên thành đối tượng `URI` → `new URI("http://localhost:8080/api/v1/students/3fa85f64-5717-4562-b3fc-2c963f66afa6");`
+> * API `DELETE`: Trả `204 No Content` → không body
 
 ---
 
@@ -516,12 +656,3 @@ public class StudentController {
 
 * Tạo collection “Student CRUD” và test toàn bộ API.
 * Thử tạo mới, cập nhật, xóa và đọc danh sách.
-
----
-
-## 5) Bài tập về nhà (Homework)
-
-1. Thêm xử lý lỗi validation khi thiếu trường hoặc sai định dạng email.
-2. Thêm field `createdAt` và `updatedAt` cho Student.
-3. (Tuỳ chọn) Dùng `List<Student>` trong repository và sắp xếp theo `fullname`.
-4. Chuẩn bị cho buổi 4: Validation nâng cao & Exception Handling.
