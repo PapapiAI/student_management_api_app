@@ -1,4 +1,4 @@
-# Spring Boot – Buổi 2: RESTful API Design
+# Spring Boot – Buổi 2: Thiết kế RESTful API
 
 ## 1) REST API Best Practices
 
@@ -86,6 +86,8 @@ Nếu mỗi API trả về format khác nhau, phía frontend hoặc mobile app s
 * Tạo class `ApiResponse<T>` chung để dùng cho tất cả endpoint → dễ logging, monitoring và test
 
 ```java
+//src/main/java/student/management/api_app/dto/ApiResponse.java
+
 @Value
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -115,6 +117,20 @@ public class ApiResponse<T> {
 > * `@JsonInclude(JsonInclude.Include.NON_NULL)`: ẩn các trường null khi serialize sang JSON
 
 _Note: Sẽ giải thích chi tiết hơn về `RFC 7807 (Problem Details)` ở bài sau_
+
+#### Bài tập 1: Viết class `ApiResponse<T>` hoàn chỉnh
+
+`src/main/java/student/management/api_app/dto/ApiResponse.java`
+
+> * Gồm các field: 
+>   * `boolean success`
+>   * `T data`
+>   * `ApiError error`
+>   * `Instant timestamp` với giá trị mặc định `Instant.now()`
+> * Nested class `ApiError` gồm các field:
+>   * `String code`
+>   * `String message`
+>   * `String path`
 
 ---
 
@@ -154,11 +170,7 @@ dependencies {
 
 ### 3.2 Cấu hình Swagger UI
 
-Swagger UI mặc định tại:
-
-```
-http://localhost:8080/swagger-ui.html
-```
+Swagger UI mặc định tại: `http://localhost:8080/swagger-ui.html`
 
 ### 3.3 Tuỳ chỉnh thông tin API
 
@@ -195,6 +207,8 @@ openapi.groups.demo.packages=student.management.api_app.controller.demo1
   > * Chia thành nhiều nhóm API
 
 ```java
+//src/main/java/student/management/api_app/configs/OpenApiConfig.java
+
 @Configuration
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class OpenApiConfig {
@@ -297,6 +311,67 @@ openapi.groups.demo.packages=student.management.api_app.controller.demo1,student
 
 > * Ngoài ra có thể sử dụng `.pathsToMatch("/api/v1/students/**")` để group theo path
 
+#### Bài tập 2: Viết class `OpenApiConfig` hoàn chỉnh
+
+```java
+//src/main/java/student/management/api_app/configs/OpenApiConfig.java
+
+// Hãy khai báo Annotation cần thiết
+@FieldDefaults(level = AccessLevel.PRIVATE)
+public class OpenApiConfig {
+
+  // ===== Info =====
+  @Value("${openapi.title}")
+  String title;
+  @Value("${openapi.description}")
+  String description;
+  @Value("${openapi.version}")
+  String version;
+
+  // ===== Servers =====
+  @Value("${openapi.servers[0].url}")
+  String server0Url;
+  @Value("${openapi.servers[0].description}")
+  String server0Desc;
+
+  @Value("${openapi.servers[1].url}")
+  String server1Url;
+  @Value("${openapi.servers[1].description}")
+  String server1Desc;
+
+  @Value("${openapi.servers[2].url}")
+  String server2Url;
+  @Value("${openapi.servers[2].description}")
+  String server2Desc;
+
+  // Hãy khai báo Annotation cần thiết
+  public OpenAPI openApi() {
+    // Hãy hoàn thiện code
+  }
+
+  // ===== Groups =====
+  @Value("${openapi.groups.students.name}")
+  String studentsGroupName;
+  @Value("${openapi.groups.students.packages}")
+  String[] studentsPackages;
+
+  @Value("${openapi.groups.demo.name}")
+  String demoGroupName;
+  @Value("${openapi.groups.demo.packages}")
+  String[] demoPackages;
+
+  // Hãy khai báo Annotation cần thiết
+  public GroupedOpenApi studentsGroup() {
+    // Hãy hoàn thiện code
+  }
+
+  // Hãy khai báo Annotation cần thiết
+  public GroupedOpenApi demoGroup() {
+    // Hãy hoàn thiện code
+  }
+}
+```
+
 #### 3.3.3 Tạo mock StudentController để test Swagger UI
 
 ```java
@@ -348,6 +423,8 @@ public class DemoController2b {
 ### 4.1 Controller
 
 ```java
+//src/main/java/student/management/api_app/controller/student/StudentController.java
+
 @RestController
 @RequestMapping("${api.prefix}/students")
 @Tag(name = "Student Management", description = "Student Management API")
@@ -390,6 +467,21 @@ public class StudentController {
 > * `ResponseEntity` là wrapper chuẩn của Spring cho HTTP response
 >   * `ok(body)` = status code 200
 >   * `body`: đối tượng response, ở đây là `studentList`
+
+#### Bài tập 3: Viết class `StudentController` hoàn chỉnh
+
+```java
+//src/main/java/student/management/api_app/controller/student/StudentController.java
+
+// Hãy khai báo Annotation cần thiết
+public class StudentController {
+
+  // Hãy khai báo Annotation cần thiết
+  public ResponseEntity<ApiResponse<List<Object>>> getStudents() {
+    // Hãy hoàn thiện code
+  }
+}
+```
 
 ### 4.2 Chạy thử ứng dụng
 
