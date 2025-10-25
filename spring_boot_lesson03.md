@@ -212,6 +212,36 @@ public class Student {
 > * Annotation `@AllArgsConstructor`: tương tự `@NoArgsConstructor` → tự tạo constructor có đủ tham số cho tất cả field
 > * `Instant`: Kiểu dữ liệu thời gian, luôn ở `UTC` (múi giờ 0 - ứng với chữ Z ở cuối) → KHÔNG bị phụ thuộc vào múi giờ hệ thống
 
+#### Bài tập 1: Viết class `Student` hoàn chỉnh
+
+```java
+// model/Student.java
+
+// Hãy khai báo Annotation cần thiết
+public class Student {
+  UUID id;
+  String fullName;
+  Integer age;
+  String email;
+
+  Instant createdAt;
+  Instant updatedAt;
+
+  // === Business helpers ===
+  public boolean isAdult() {
+    // Hãy hoàn thiện code
+  }
+
+  public void onCreate() {
+    // Hãy hoàn thiện code
+  }
+
+  public void onUpdate() {
+    // Hãy hoàn thiện code
+  }
+}
+```
+
 #### 3.2.2 DTO
 
 > * `DTO (Data Transfer Object)` là lớp dùng để nhận dữ liệu từ client (`request`) hoặc trả dữ liệu về client (`response`)
@@ -334,6 +364,16 @@ public class StudentRepository {
 >   * Phương thức static `Optional.ofNullable(value)` → tạo ra một `Optional` từ giá trị có thể `null`
 >     * Nếu `value != null` → trả về `Optional` chứa giá trị đó
 >     * Nếu `value == null` → trả về `Optional.empty()` (một Optional rỗng, không có giá trị)
+
+#### Bài tập 2: Viết class `StudentRepository` hoàn chỉnh
+
+`repository/StudentRepository.java`
+
+> Viết các method `CRUD` cho repo này:
+> * `findAll()`
+> * `findById(UUID id)`
+> * `save(Student s)`
+> * `deleteById(UUID id)`
 
 ---
 
@@ -468,6 +508,19 @@ public class StudentService {
 | Function<T, R> | Nhận T   | Trả về R       | Biến đổi từ T → R                          | `x -> x.length()` / <br/>`user -> toUserResponse(user)` |
 | Predicate<T>   | Nhận T   | Trả về boolean | Kiểm tra điều kiện                         | `x -> x > 0`                                            |
 
+#### Bài tập 3: Viết class `Student` hoàn chỉnh
+
+`service/StudentService.java`
+
+> Viết các method nghiệp vụ & helper cho service này:
+> * Phương thức helper `toResponse(Student s)`
+> * Các phương thức xử lý nghiệp vụ (xử lý ném `exception` khi cần):
+>   * `getAllStudents()`
+>   * `getStudentById(UUID id)`
+>   * `createStudent(StudentCreateRequest req)` (có validate `fullName` không trống, `age >= 16`, `email` phải có '@')  
+>   * `updateStudent(UUID id, StudentUpdateRequest req)` (có validate `fullName` không trống, `age >= 16`, `email` phải có '@')
+>   * `deleteStudent(UUID id)`
+
 ---
 
 ### 3.5 Controller Layer
@@ -572,7 +625,7 @@ public class StudentController {
   }
 
   @Operation(
-          summary = "Create student",
+          summary = "Update student",
           description = "Bài thực hành buổi 3: Thiết kế API `PUT /api/v1/students/id` in-memory",
           responses = {
                   @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -636,6 +689,17 @@ public class StudentController {
 >     * `.buildAndExpand(created.id())`: Thay thế {id} bằng giá trị UUID thực tế được lấy từ `created.id()` (`http://localhost:8080/api/v1/students/3fa85f64-5717-4562-b3fc-2c963f66afa6`)
 >     * `.toUri()`: Chuyển đổi chuỗi URL trên thành đối tượng `URI` → `new URI("http://localhost:8080/api/v1/students/3fa85f64-5717-4562-b3fc-2c963f66afa6");`
 > * API `DELETE`: Trả `204 No Content` → không body
+
+#### Bài tập 4: Viết class `StudentController` hoàn chỉnh
+
+`controller/StudentController.java`
+
+> Viết các controller và cấu hình Swagger UI:
+> * `GET /api/v1/students`: lấy danh sách tất cả học viên 
+> * `GET /api/v1/students/id`: lấy học viên theo id
+> * `POST /api/v1/students`: tạo mới 1 học viên
+> * `PUT /api/v1/students/id`: update thông tin 1 học viên
+> * `DELETE /api/v1/students/id`: xóa 1 học viên
 
 ---
 

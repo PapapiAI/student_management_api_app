@@ -103,7 +103,7 @@ public class StudentController {
     }
 
     @Operation(
-            summary = "Create student",
+            summary = "Update student",
             description = "Bài thực hành buổi 3: Thiết kế API `PUT /api/v1/students/id` in-memory",
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(
