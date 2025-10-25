@@ -15,3 +15,16 @@
 # Buổi 13: Spring Security Setup
 
 ### 1. Thêm phần lý thuyết: `JPA Auditing` để quản lý người tạo/người sửa
+
+---
+
+# Buổi 13: Spring Security Setup
+
+## Best practice
+
+### 1. Hardcode
+
+### 2. Magic number
+
+### 3. Tạo file Setting để khỏi sửa code
+
