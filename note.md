@@ -1,8 +1,6 @@
 # Buổi 6:
 
-### 1. Thêm phần lý thuyết: Sử dụng `@PrePersist`, `@PreUpdate` trong entity: tự động gán thời gian tạo/cập nhật
-
-### 2. Thêm phần lý thuyết: API `create` cần trả về URI trên header
+### 1. Thêm phần lý thuyết: API `create` cần trả về URI trên header
 
 ---
 
