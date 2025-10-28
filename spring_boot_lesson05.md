@@ -13,14 +13,18 @@ Ví dụ:
 * Với JDBC thuần phải viết:
 
 ```java
-String sql = "INSERT INTO students(full_name, email, age) VALUES (?, ?, ?)";
+public Student save(String fullName, String email, Integer age) {
+    String sql = "INSERT INTO students(full_name, email, age) VALUES (?, ?, ?)";
+}
 ```
 
 * Với ORM chỉ cần:
 
 ```java
-Student s = new Student("Nguyen Van A", 20, "vana@gmail.com");
-session.persist(s);
+public Student save(String fullName, String email, Integer age) {
+    Student s = new Student("Nguyen Van A", 20, "vana@gmail.com");
+    session.persist(s);    
+}
 ```
 
 → Hibernate sẽ tự động tạo câu SQL tương ứng:
@@ -50,39 +54,112 @@ INSERT INTO students(full_name, age, email) VALUES ('Nguyen Van A', 20, 'vana@gm
 > * Quản lý ánh xạ Java class ↔ table trong DB
 > * Tự động sinh SQL
 > * Quản lý Transaction
-> Nó thực hiện ánh xạ giữa Java class và bảng CSDL, và cung cấp API để thực hiện CRUD.
 
 ### 2.2 Các thành phần chính của Hibernate
 
-| Thành phần         | Vai trò                                                          |
-|--------------------|------------------------------------------------------------------|
-| **Configuration**  | Nạp file cấu hình (hibernate.cfg.xml) và khởi tạo SessionFactory |
-| **SessionFactory** | Tạo và quản lý các Session                                       |
-| **Session**        | Đại diện cho kết nối (connection) đến DB, dùng để CRUD entity    |
-| **Transaction**    | Đảm bảo tính toàn vẹn của dữ liệu khi thực hiện nhiều thao tác   |
+| Thành phần       | Vai trò                                                            |
+|------------------|--------------------------------------------------------------------|
+| `Configuration`  | Nạp file cấu hình `hibernate.cfg.xml` và khởi tạo `SessionFactory` |
+| `SessionFactory` | Tạo và quản lý các `Session`                                       |
+| `Session`        | Đại diện cho kết nối (connection) đến DB, dùng để `CRUD entity`    |
+| `Transaction`    | Quản lý `commit` / `rollback`                                      |
+| `Entity`         | Class ánh xạ với bảng                                              |
 
-### 2.3 Chu trình hoạt động Hibernate
+### 2.3 Luồng hoạt động Hibernate
 
 ```
-SessionFactory → Session → Transaction → CRUD → Commit/Rollback → Close Session
+Hibernate config → SessionFactory → Session → Transaction → CRUD → Commit/Rollback → Close Session
 ```
 
 ---
 
 ## 3) Entity Mapping cơ bản
 
-### 3.1 Tạo Entity Student
+### 3.1 Thêm dependencies cho Hibernate
+
+```xml
+<!-- Hibernate (ORM) -->
+<dependency>
+    <groupId>org.hibernate.orm</groupId>
+    <artifactId>hibernate-core</artifactId>
+    <version>6.6.1.Final</version>
+</dependency>
+<dependency>
+    <groupId>jakarta.persistence</groupId>
+    <artifactId>jakarta.persistence-api</artifactId>
+    <version>3.1.0</version>
+</dependency>
+```
+
+### 3.2 Cấu hình `hibernate.cfg.xml`
+
+```xml
+<!DOCTYPE hibernate-configuration PUBLIC
+        "-//Hibernate/Hibernate Configuration DTD 3.0//EN"
+        "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
+<hibernate-configuration>
+    <session-factory>
+        <!-- JDBC -->
+        <property name="hibernate.connection.driver_class">org.postgresql.Driver</property>
+        <property name="hibernate.connection.url">jdbc:postgresql://localhost:5432/jdbc_demo?currentSchema=app</property>
+        <property name="hibernate.connection.username">postgres</property>
+        <property name="hibernate.connection.password">123456@root</property>
+
+        <!-- Show SQL -->
+        <property name="hibernate.show_sql">true</property>
+        <property name="hibernate.format_sql">true</property>
+
+        <!-- Auto DDL: none -->
+        <property name="hibernate.hbm2ddl.auto">none</property>
+
+        <!-- Declare entity -->
+        <mapping class="demo.jdbc.model.orm.StudentEntity"/>
+    </session-factory>
+</hibernate-configuration>
+```
+
+**Lưu ý:** 
+* Hành vi Hibernate thực thi Auto DDL:
+  * `validate`: hibernate sẽ so sánh shema giữa entity và DB, nếu khác → báo lỗi
+  * `update`: hibernate tự sửa bảng ở DB cho khớp entity (ALTER TABLE) → chỉ nên dùng trong môi trường Dev
+  * `none`: hibernate không tự ý sửa shema DB
+* Thẻ `<mapping class="demo.jdbc.model.orm.StudentEntity"/>` cần khai báo chính xác tên và source root của entity
+
+### 3.3 Thêm cột updated_at cho DB
+
+* Chạy script để thêm cột updated_at
+
+```sql
+ALTER TABLE app.students
+    ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+```
+
+* Chạy script để tạo trigger tự động gán updated_at mỗi lần thực hiện `UPDATE`
+
+```sql
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_set_updated_at
+BEFORE UPDATE ON app.students
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+```
+
+### 3.3 Tạo model `StudentEntity`
 
 ```java
-import jakarta.persistence.*;
-import lombok.*;
-import java.time.Instant;
-import java.util.UUID;
+// demo/jdbc/model/orm/StudentEntity.java
 
 @Entity
-@Table(name = "student")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class Student {
+@Table(name = "students", schema = "app")
+public class StudentEntity {
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -90,33 +167,60 @@ public class Student {
     @Column(name = "full_name", nullable = false, length = 150)
     private String fullName;
 
-    private Integer age;
-
-    @Column(unique = true)
+    @Column(name = "email", nullable = false, unique = true, length = 200)
     private String email;
 
+    @Column(name = "age")
+    private int age;
+
+    @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
     private Instant updatedAt;
 
-    @PrePersist
-    void onCreate() {
-        createdAt = updatedAt = Instant.now();
-    }
-
-    @PreUpdate
-    void onUpdate() {
-        updatedAt = Instant.now();
-    }
+    // Getter/Setter
+    public UUID getId() { return id; }
+    public String getFullName() { return fullName; }
+    public void setFullName(String fullName) { this.fullName = fullName; }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    public Integer getAge() { return age; }
+    public void setAge(Integer age) { this.age = age; }
+    public Instant getCreatedAt() { return createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
 }
 ```
 
-> * `@Entity`: đánh dấu class là entity sẽ ánh xạ tới table trong DB.
-> * `@Table`: đặt tên bảng.
-> * `@Id`: xác định khóa chính.
-> * `@GeneratedValue`: chỉ định cơ chế sinh khóa tự động.
-> * `@PrePersist`, `@PreUpdate`: tự động gán thời gian tạo/cập nhật.
+#### Giải thích Annotation 
 
-### 3.2 File cấu hình Hibernate (`hibernate.cfg.xml`)
+> * `@Entity`: đánh dấu class là entity sẽ ánh xạ tới table trong DB
+> * `@Table`: khai báo tên bảng và schema
+> * `@Id`: xác định cột khóa chính
+> * `@GeneratedValue(strategy = GenerationType.UUID)`: cấu hình để hibernate sinh ID tự động
+> * `@Column`: khai báo cho cột `name`, `nullable`, `unique`, `length`, ...
+>   * `insertable = false`: hibernate không đưa created_at, updated_at vào câu SQL INSERT
+>     * `insert into app.students (id, full_name, email, age) values (?, ?, ?, ?)`
+>   * `updatable = false`: hibernate không đưa created_at, updated_at vào câu SQL UPDATE
+> * `@PrePersist`, `@PreUpdate`: hibernate tự động gán thời gian tạo/cập nhật
+>   * Thông thường nên để DB tự lo gán thời gian tạo/cập nhật (đối với UPDATE thì dùng trigger)
+>   * Khi update bằng tool khác không phải hibernate thì vẫn an toàn, không lo sót dữ liệu vì DB đã tự lo  
+
+#### Bài tập 1: Viết model `StudentEntity` tương ứng với bảng students
+
+```java
+// demo/jdbc/model/orm/StudentEntity.java
+
+// Hãy khai báo Annotation cần thiết
+public class StudentEntity {
+
+    // Hãy khai báo và cấu hình cho các cột 
+
+    // Hãy viết các Getter/Setter cần thiết
+}
+```
+
+### 3.4 File cấu hình Hibernate (`hibernate.cfg.xml`)
 
 ```xml
 <?xml version='1.0' encoding='utf-8'?>
