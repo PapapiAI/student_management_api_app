@@ -151,6 +151,28 @@ FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();
 ```
 
+**Lưu ý:** Nếu không muốn dùng pgAdmin thì có thể dùng `psql` trong container `pg-student`
+
+* Mở terminal bên trong container `pg-student`
+
+```bash
+  docker exec -it pg-student bash
+```
+
+* Vào `psql`
+
+```bash
+  psql - U postgres
+```
+
+* Chạy các lệnh `ALTER TABLE...;` `CREATE OR REPLACE FUNCTION...;` `CREATE TRIGGER...;` ở trên
+
+* Kiểm tra kết quả trên `psql`
+
+```bash
+  \d app.students
+```
+
 ### 3.3 Tạo model `StudentEntity`
 
 ```java
@@ -220,117 +242,582 @@ public class StudentEntity {
 }
 ```
 
-### 3.4 File cấu hình Hibernate (`hibernate.cfg.xml`)
-
-```xml
-<?xml version='1.0' encoding='utf-8'?>
-<!DOCTYPE hibernate-configuration PUBLIC
-        "-//Hibernate/Hibernate Configuration DTD 3.0//EN"
-        "http://hibernate.sourceforge.net/hibernate-configuration-3.0.dtd">
-<hibernate-configuration>
-    <session-factory>
-        <!-- Database connection settings -->
-        <property name="hibernate.connection.driver_class">org.postgresql.Driver</property>
-        <property name="hibernate.connection.url">jdbc:postgresql://localhost:5432/student_management</property>
-        <property name="hibernate.connection.username">app_user</property>
-        <property name="hibernate.connection.password">123456</property>
-
-        <!-- SQL dialect -->
-        <property name="hibernate.dialect">org.hibernate.dialect.PostgreSQLDialect</property>
-
-        <!-- Show SQL -->
-        <property name="hibernate.show_sql">true</property>
-        <property name="hibernate.format_sql">true</property>
-
-        <!-- Update schema automatically -->
-        <property name="hibernate.hbm2ddl.auto">update</property>
-
-        <!-- Annotated classes -->
-        <mapping class="student.management.model.Student"/>
-    </session-factory>
-</hibernate-configuration>
-```
-
-> * `hibernate.hbm2ddl.auto`: tự động cập nhật schema (`validate`, `update`, `create`, `create-drop`).
-> * Trong sản phẩm thật, nên dùng Flyway để quản lý migration thay vì auto-update.
-
 ---
 
-## 4) Session & Transaction trong Hibernate
+## 4) Hibernate Session & Transaction
 
-### 4.1 Cấu trúc cơ bản
+### 4.1 Build SessionFactory
+
+* Hibernate cần SessionFactory để tạo ra Session
+* Đại diện cho kết nối đến DB, dùng để `CRUD entity`
 
 ```java
-import org.hibernate.*;
-import org.hibernate.cfg.Configuration;
+public class HibernateUtil {
+  private static final SessionFactory sessionFactory = buildSessionFactory();
 
-public class HibernateDemo {
-    public static void main(String[] args) {
-        Configuration config = new Configuration().configure();
-        try (SessionFactory factory = config.buildSessionFactory();
-             Session session = factory.openSession()) {
-
-            Transaction tx = session.beginTransaction();
-
-            Student student = Student.builder()
-                    .fullName("Nguyen Van A")
-                    .age(22)
-                    .email("vana@example.com")
-                    .build();
-
-            session.persist(student);
-            tx.commit();
-
-            System.out.println("Saved student with id: " + student.getId());
-        }
+  private static SessionFactory buildSessionFactory() {
+    try {
+      Configuration config = new Configuration().configure();
+      System.out.println(">>> Starting... building SessionFactory");
+      return config.buildSessionFactory();
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to build SessionFactory", e);
     }
+  }
+
+  private HibernateUtil() {}
+
+  public static SessionFactory getSessionFactory() {
+    return sessionFactory;
+  }
+
+  public static void closeSession() {
+    sessionFactory.close();
+    System.out.println(">>> Shutting down... closed SessionFactory");
+  }
 }
 ```
 
-### 4.2 Giải thích
+**Lưu ý**: `config.buildSessionFactory()` thực hiện nhiều tác vụ nặng để build `SessionFactory`
+* Suốt vòng đời app chỉ nên tạo 1 instance `SessionFactory` duy nhất để dùng chung (Singleton pattern)
+* Sử dụng biến static cho `SessionFactory sessionFactory` → tạo duy nhất 1 lần khi load class HibernateUtil
 
-| Thành phần       | Vai trò                                     |
-| ---------------- | ------------------------------------------- |
-| `SessionFactory` | Sinh `Session` mới khi cần giao tiếp với DB |
-| `Session`        | Làm việc với các Entity, thực hiện CRUD     |
-| `Transaction`    | Quản lý commit/rollback cho các thao tác DB |
+> `new Configuration().configure()`: đọc file `hibernate.cfg.xml` để `config.buildSessionFactory()` thực hiện:
+>   * kết nối DB
+>   * load mapping entity
+>   * khởi tạo engine ORM của Hibernate
 
----
+### 4.2 Mở Session và lưu entity
 
-## 5) So sánh JDBC vs ORM
+```java
+// demo/jdbc/dao/HibernateStudentDao.java
 
-| Tiêu chí               | JDBC                      | ORM (Hibernate)              |
-| ---------------------- | ------------------------- | ---------------------------- |
-| Mức độ trừu tượng      | Thấp (code SQL trực tiếp) | Cao (làm việc qua Entity)    |
-| Viết SQL thủ công      | Có                        | Không cần, Hibernate tự sinh |
-| Mapping Object ↔ Table | Phải tự làm               | Tự động qua annotation       |
-| Transaction            | Tự quản lý                | Hibernate tự động            |
-| Dễ mở rộng             | Khó                       | Dễ, tích hợp tốt với Spring  |
+public class HibernateStudentDao {
+  public StudentEntity save(String fullName, String email, Integer age) {
+    Transaction transaction = null;
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+      transaction = session.beginTransaction();
 
----
+      StudentEntity student = new StudentEntity();
+      student.setFullName(fullName);
+      student.setEmail(email);
+      student.setAge(age);
+      
+      session.persist(student);
+      session.flush();
+      session.refresh(student);
 
-## 6) Thực hành: Lưu Entity Student vào DB
-
-### 6.1 Các bước
-
-1. Tạo class `Student` (như trên).
-2. Cấu hình `hibernate.cfg.xml`.
-3. Viết `HibernateDemo.java` để tạo `Session`, mở `Transaction`, lưu dữ liệu.
-4. Kiểm tra dữ liệu trong bảng `student` trên PostgreSQL.
-
-**Kết quả mong đợi:**
-
+      transaction.commit();
+      return student;
+    } catch (Exception e) {
+      if (transaction != null) transaction.rollback();
+      throw e;
+    }
+  }
+}
 ```
-Hibernate:
-    insert into student (age, created_at, email, full_name, updated_at, id)
-    values (?, ?, ?, ?, ?, ?)
-✅ Student persisted successfully!
+
+#### Giải thích luồng hoạt động
+
+| Bước                                   | Vai trò                                                                                      |
+|----------------------------------------|----------------------------------------------------------------------------------------------|
+| 1. `sessionFactory.openSession()`      | Mở `Session` – tạo kết nối làm việc cụ thể                                                   |
+| 2. `session.beginTransaction()`        | Bắt đầu Transaction – làm việc với Entity, thực hiện CRUD                                    |
+| 2.1 `session.persist(student)`         | Hibernate tự sinh SQL INSERT                                                                 |
+| 2.2 `session.flush()`                  | Đẩy SQL INSERT xuống DB để insert bản ghi trên transaction của DB                            |
+| 2.3 `session.refresh(student)`         | Sinh SQL SELECT để lấy dữ liệu sau khi INSERT (`created_at/updated_at = now()`)              |
+| 3. `transaction.commit()/rollback()`   | Kết thúc transaction, nếu có lỗi → rollback, nếu không → commit để ghi dữ liệu INSERT vào DB |
+
+> Hibernate chuyển Object thành SQL INSERT/UPDATE/DELETE tương ứng
+
+**Lưu ý**: 
+* Ở class `StudentEntity` cần Hibernate tự động sinh id, nếu không Hibernate sẽ insert vào bảng students ở DB với id là null, gây xung đột DB:
+  * Hibernate ném lỗi `LogicalConnectionManagedImpl … is closed` khi cố thực hiện `session.persist(student)`
+
+### 4.3 Tạo `HibernateStudentDao` song song với `StudentDao` (JDBC) để so sánh
+
+```java
+// demo/jdbc/orm/HibernateUtil.java
+
+public class HibernateStudentDao {
+  public List<StudentEntity> findAll() {
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+      // Hibernate Query Language (HQL)
+      final Query<StudentEntity> query = session.createQuery(
+              "from StudentEntity s order by s.createdAt desc", StudentEntity.class
+      );
+
+      // Execute query and get a list of StudentEntity
+      return query.getResultList();
+    }
+  }
+
+  public Optional<StudentEntity> findById(UUID id) {
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+      // session.get(): only using for primary key
+      return Optional.ofNullable(session.get(StudentEntity.class, id));
+    }
+  }
+
+  public Optional<StudentEntity> findByEmail(String email) {
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+      final Query<StudentEntity> query = session.createQuery(
+              "from StudentEntity s where s.email = :email", StudentEntity.class
+      );
+      query.setParameter("email", email);
+
+      return query.uniqueResultOptional();
+    }
+  }
+
+  public boolean existsByEmail(String email) {
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+      final Query<Long> query = session.createQuery(
+              "select count(s) from StudentEntity s where s.email = :email", Long.class
+      );
+      query.setParameter("email", email);
+
+      // query.getSingleResult(): dùng khi kết quả query DB chắc chắn trả về ít nhất 1 bản ghi, ví dụ select count()
+      return query.getSingleResult() > 0;
+    }
+  }
+
+  public StudentEntity save(String fullName, String email, Integer age) {
+    Transaction transaction = null;
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+      transaction = session.beginTransaction();
+
+      StudentEntity student = new StudentEntity();
+      student.setFullName(fullName);
+      student.setEmail(email);
+      student.setAge(age);
+
+      session.persist(student);
+      session.flush();
+      session.refresh(student);
+
+      transaction.commit();
+      return student;
+    } catch (Exception e) {
+      if (transaction != null) transaction.rollback();
+      throw e;
+    }
+  }
+
+  public StudentEntity update(UUID id, String fullName, Integer age) {
+    Transaction transaction = null;
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+      transaction = session.beginTransaction();
+
+      StudentEntity student = session.get(StudentEntity.class, id);
+      if (student == null) throw new RuntimeException("Not found student with id: " + id);
+
+      student.setFullName(fullName);
+      student.setAge(age);
+
+      session.flush();
+      session.refresh(student);
+
+      transaction.commit();
+      return student;
+    } catch (Exception e) {
+      if (transaction !=null) transaction.rollback();
+      throw e;
+    }
+  }
+
+  public boolean deleteById(UUID id) {
+    Transaction transaction = null;
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+      transaction = session.beginTransaction();
+
+      StudentEntity student = session.get(StudentEntity.class, id);
+      if (student == null) {
+        transaction.rollback();
+        return false;
+      }
+      session.remove(student);
+      transaction.commit();
+      return true;
+    } catch (Exception e) {
+      if (transaction != null) transaction.rollback();
+      throw e;
+    }
+  }
+}
+```
+
+> * `session.createQuery("from StudentEntity s order by s.createdAt desc", StudentEntity.class)`
+>   * Sử dụng Hibernate Query Language (HQL): viết query với Java Object thay vì với table 
+>   * `.createQuery()`: cần truyền class trong câu HQL, ở đây là `StudentEntity`
+> * `query.getResultList()`: thực thi query và lấy danh sách `List<StudentEntity>`
+> * `session.get(StudentEntity.class, id)`: lấy `StudentEntity` ứng với id truyền vào
+>   * `session.get()`: chỉ dùng cho cột khóa chính
+> * `query.uniqueResultOptional()`: thực thi query và lấy `StudentEntity` duy nhất (nếu có)
+>   * Phù hợp khi cột `email` có ràng buộc `unique`
+>   * Số row trả về từ DB:
+>     * `0 row`: Optional.empty()
+>     * `1 row`: Optional.of(result)
+>     * `> 1 row`: ném `NonUniqueResultException`
+> * `query.getSingleResult()`: dùng khi kết quả query DB chắc chắn trả về **ít nhất 1 bản ghi**, ví dụ select count()
+
+#### Bài tập 2: Viết class `HibernateStudentDao` hoàn chỉnh
+
+```java
+// demo/jdbc/dao/HibernateStudentDao.java
+
+public class HibernateStudentDao {
+  public List<StudentEntity> findAll() {
+    // Hãy hoàn thiện code
+  }
+
+  public Optional<StudentEntity> findById(UUID id) {
+    // Hãy hoàn thiện code
+  }
+
+  public Optional<StudentEntity> findByEmail(String email) {
+    // Hãy hoàn thiện code
+  }
+
+  public boolean existsByEmail(String email) {
+    // Hãy hoàn thiện code
+  }
+
+  public StudentEntity save(String fullName, String email, Integer age) {
+    // Hãy hoàn thiện code
+  }
+
+  public StudentEntity update(UUID id, String fullName, Integer age) {
+    // Hãy hoàn thiện code
+  }
+
+  public boolean deleteById(UUID id) {
+    // Hãy hoàn thiện code
+  }
+}
 ```
 
 ---
 
-## 7) Bài tập mở rộng
+## 5) So sánh JDBC vs Hibernate ORM
 
-* Thêm trường `address` và `gender` vào entity `Student`.
-* Thực hành truy vấn `session.createQuery("from Student where age >= 18", Student.class).list()`.
-* So sánh lại code JDBC (Buổi 4) và Hibernate (Buổi 5).
+| Tiêu chí               | JDBC                      | ORM (Hibernate)                  |
+|------------------------|---------------------------|----------------------------------|
+| Thao tác CRUD          | Bằng SQL                  | Bằng Object                      |
+| Viết SQL thủ công      | Có                        | Không cần, Hibernate tự sinh     |
+| Mapping Object ↔ Table | Tự viết map ResultSet     | Tự động ánh xạ Object-Table      |
+| Transaction            | Thủ công                  | Hibernate tự quản lý             |
+| SQL Injection          | Dễ mắc lỗi nếu nối chuỗi  | An toàn hơn (parameter binding)  |
+
+---
+
+## 6) Demo RESTfull API với Hibernate ORM
+
+* Viết thêm route “ORM song song” `/orm/students`, vẫn giữ nguyên route cũ `/students` (JDBC thuần)
+
+```java
+// demo/jdbc/App.java
+
+public class App {
+  public static void main(String[] args) {
+    port(8080);
+
+    // Register shutdown hook (when app stop) for closing SessionFactory
+    Runtime.getRuntime().addShutdownHook(new Thread(HibernateUtil::closeSession));
+
+    // Middleware: JSON & CORS
+    after((req, res) -> res.type("application/json"));
+    options("/*", (req, res) -> {
+      String reqHeaders = req.headers("Access-Control-Request-Headers");
+      if (reqHeaders != null) res.header("Access-Control-Allow-Headers", reqHeaders);
+      String reqMethod = req.headers("Access-Control-Request-Method");
+      if (reqMethod != null) res.header("Access-Control-Allow-Methods", reqMethod);
+      return "OK";
+    });
+    before((req, res) -> {
+      res.header("Access-Control-Allow-Origin", "*");
+
+      System.out.println(">>> " + req.requestMethod() + " " + req.uri()
+              + (req.raw().getQueryString() != null ? "?" + req.raw().getQueryString() : ""));
+      System.out.println("Query keys = " + req.queryParams());
+      for (String k : req.queryParams()) {
+        System.out.println(" - " + k + " = [" + req.queryParams(k) + "]");
+      }
+    });
+
+    // Healthcheck
+    get("/health", (req, res) -> JsonUtil.toJson(Map.of("ok", true)));
+
+    StudentDao dao = new StudentDao();
+    String localhost = "http://localhost:8080";
+
+    // === CRUD - REST API via Spark (pure JDBC) ===
+
+    // Get all with filter by email
+    get("/students", (req, res) -> {
+      String email = req.queryParams("email");
+
+      if (email != null && !email.isBlank()) {
+        return dao.findByEmail(email)
+                .<Object>map(JsonUtil::toJson)
+                .orElseGet(() -> {
+                  res.status(404);
+                  return JsonUtil.toJson(Map.of("error", "Not found"));
+                });
+      }
+      // fallback
+      var list = dao.findAll();
+      return JsonUtil.toJson(list);
+    });
+
+    // Get by id
+    get("/students/:id", (req, res) -> {
+      try {
+        UUID id = UUID.fromString(req.params(":id"));
+        return dao.findById(id)
+                .<Object>map(JsonUtil::toJson)
+                .orElseGet(() -> {
+                  res.status(404);
+                  return JsonUtil.toJson(Map.of("error", "Not found"));
+                });
+      } catch (IllegalArgumentException ex) {
+        res.status(400);
+        return JsonUtil.toJson(Map.of("error", "Invalid UUID"));
+      }
+    });
+
+    // Create
+    post("/students", (req, res) -> {
+      var body = JsonUtil.fromJson(req.body(), StudentCreateRequest.class);
+
+      // Validate
+      List<String> errors = new ArrayList<>();
+      if (body.fullName == null || body.fullName.isBlank()) errors.add("fullName is required");
+      if (body.email == null || !body.email.contains("@")) errors.add("email is invalid");
+      if (body.age == null || body.age < 16) errors.add("age must be >= 16");
+      if (!errors.isEmpty()) {
+        res.status(400);
+        return JsonUtil.toJson(Map.of("errors", errors));
+      }
+
+      if (dao.existsByEmail(body.email)) {
+        res.status(400);
+        return JsonUtil.toJson(Map.of("error", "email already exists"));
+      }
+
+      Student created = dao.save(body.fullName, body.email, body.age);
+      res.status(201);
+
+      res.header("Location", localhost + "/students/" + created.id());
+
+      return JsonUtil.toJson(created);
+    });
+
+    // Update
+    put("/students/:id", (req, res) -> {
+      UUID id;
+      try {
+        id = UUID.fromString(req.params(":id"));
+      } catch (IllegalArgumentException ex) {
+        res.status(400);
+        return JsonUtil.toJson(Map.of("error", "Invalid UUID"));
+      }
+
+      var body = JsonUtil.fromJson(req.body(), StudentUpdateRequest.class);
+
+      List<String> errors = new ArrayList<>();
+      if (body.fullName == null || body.fullName.isBlank()) errors.add("fullName is required");
+      if (body.age == null || body.age < 16) errors.add("age must be >= 16");
+      if (!errors.isEmpty()) {
+        res.status(400);
+        return JsonUtil.toJson(Map.of("errors", errors));
+      }
+
+      if (dao.findById(id).isEmpty()) {
+        res.status(404);
+        return JsonUtil.toJson(Map.of("error", "Not found"));
+      }
+
+      Student updated = dao.update(id, body.fullName, body.age);
+      return JsonUtil.toJson(updated);
+    });
+
+    // Delete
+    delete("/students/:id", (req, res) -> {
+      try {
+        UUID id = UUID.fromString(req.params(":id"));
+        boolean ok = dao.deleteById(id);
+        if (!ok) {
+          res.status(404);
+          return JsonUtil.toJson(Map.of("error", "Not found"));
+        }
+        res.status(204);
+        return "";
+      } catch (IllegalArgumentException ex) {
+        res.status(400);
+        return JsonUtil.toJson(Map.of("error", "Invalid UUID"));
+      }
+    });
+
+    // Exception fallback
+    exception(Exception.class, (e, req, res) -> {
+      res.type("application/json");
+      res.status(500);
+      res.body(JsonUtil.toJson(Map.of("error", "Internal Server Error", "message", e.getMessage())));
+    });
+
+
+    // === CRUD via Hibernate ORM ===
+    HibernateStudentDao hdao = new HibernateStudentDao();
+
+    // Get all / filter by email
+    get("/orm/students", (req, res) -> {
+      String email = req.queryParams("email");
+      if (email != null && !email.isBlank()) {
+        return hdao.findByEmail(email)
+                .<Object>map(JsonUtil::toJson)
+                .orElseGet(() -> {
+                  res.status(404);
+                  return JsonUtil.toJson(Map.of("error","Not found"));
+                });
+      }
+      var list = hdao.findAll();
+      return JsonUtil.toJson(list);
+    });
+
+    // Get by id
+    get("/orm/students/:id", (req, res) -> {
+      try {
+        UUID id = UUID.fromString(req.params(":id"));
+        return hdao.findById(id)
+                .<Object>map(JsonUtil::toJson)
+                .orElseGet(() -> {
+                  res.status(404);
+                  return JsonUtil.toJson(Map.of("error","Not found"));
+                });
+      } catch (IllegalArgumentException ex) {
+        res.status(400);
+        return JsonUtil.toJson(Map.of("error","Invalid UUID"));
+      }
+    });
+
+    // Create
+    post("/orm/students", (req, res) -> {
+      var body = JsonUtil.fromJson(req.body(), StudentCreateRequest.class);
+
+      List<String> errors = new ArrayList<>();
+      if (body.fullName == null || body.fullName.isBlank()) errors.add("fullName is required");
+      if (body.email == null || !body.email.contains("@")) errors.add("email is invalid");
+      if (body.age == null || body.age < 16) errors.add("age must be >= 16");
+      if (!errors.isEmpty()) { res.status(400); return JsonUtil.toJson(Map.of("errors", errors)); }
+
+      if (hdao.existsByEmail(body.email)) { res.status(400); return JsonUtil.toJson(Map.of("error", "email already exists")); }
+
+      StudentEntity created = hdao.save(body.fullName, body.email, body.age);
+      res.status(201);
+      res.header("Location", localhost + "/orm/students/" + created.getId());
+      return JsonUtil.toJson(created);
+    });
+
+    // Update
+    put("/orm/students/:id", (req, res) -> {
+      UUID id;
+      try { id = UUID.fromString(req.params(":id")); }
+      catch (IllegalArgumentException ex) { res.status(400); return JsonUtil.toJson(Map.of("error","Invalid UUID")); }
+
+      var body = JsonUtil.fromJson(req.body(), StudentUpdateRequest.class);
+
+      List<String> errors = new ArrayList<>();
+      if (body.fullName == null || body.fullName.isBlank()) errors.add("fullName is required");
+      if (body.age == null || body.age < 16) errors.add("age must be >= 16");
+      if (!errors.isEmpty()) { res.status(400); return JsonUtil.toJson(Map.of("errors", errors)); }
+
+      if (hdao.findById(id).isEmpty()) { res.status(404); return JsonUtil.toJson(Map.of("error","Not found")); }
+
+      StudentEntity updated = hdao.update(id, body.fullName, body.age);
+      return JsonUtil.toJson(updated);
+    });
+
+    // Delete
+    delete("/orm/students/:id", (req, res) -> {
+      try {
+        UUID id = UUID.fromString(req.params(":id"));
+        boolean ok = hdao.deleteById(id);
+        if (!ok) { res.status(404); return JsonUtil.toJson(Map.of("error","Not found")); }
+        res.status(204); return "";
+      } catch (IllegalArgumentException ex) {
+        res.status(400); return JsonUtil.toJson(Map.of("error","Invalid UUID"));
+      }
+    });
+  }
+}
+```
+
+---
+
+## 7) Chạy thử và kiểm tra bằng Postman
+
+* Gọi API `/students` và `/orm/students`, kiểm tra console log cả app để xem log SQL từ hibernate
+* `POST http://localhost:8080/orm/students`, log gồm 3 câu SQL sau:
+  * `hdao.existsByEmail(body.email)`: Hibernate:
+      select
+      count(se1_0.id)
+      from
+      app.students se1_0
+      where
+      se1_0.email=?
+  * `hdao.save(body.fullName, body.email, body.age)`:
+    * `persist(student)`: Hibernate:
+      insert
+      into
+      app.students
+      (age, email, full_name, id)
+      values
+      (?, ?, ?, ?)
+    * `refresh(student)`: Hibernate:
+      select
+      se1_0.id,
+      se1_0.age,
+      se1_0.created_at,
+      se1_0.email,
+      se1_0.full_name,
+      se1_0.updated_at
+      from
+      app.students se1_0
+      where
+      se1_0.id=?
+* `PUT http://localhost:8080/orm/students/{id}`, log gồm 3 câu SQL sau:
+  * `hdao.update(id, body.fullName, body.age)`:
+    * `session.get(StudentEntity.class, id)`: Hibernate:
+      select
+      se1_0.id,
+      se1_0.age,
+      se1_0.created_at,
+      se1_0.email,
+      se1_0.full_name,
+      se1_0.updated_at
+      from
+      app.students se1_0
+      where
+      se1_0.id=?
+    * `flush()`: hibernate nhận thấy entity `StudentEntity` đã có thay đổi giá trị, nên khi flush() sẽ sinh UPDATE SQL cho entity đó: Hibernate:
+      update
+      app.students
+      set
+      age=?,
+      email=?,
+      full_name=?
+      where
+      id=?
+    * `refresh(student)`: Hibernate:
+      select
+      se1_0.id,
+      se1_0.age,
+      se1_0.created_at,
+      se1_0.email,
+      se1_0.full_name,
+      se1_0.updated_at
+      from
+      app.students se1_0
+      where
+      se1_0.id=?
