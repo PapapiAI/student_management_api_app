@@ -1,6 +1,6 @@
 # Buổi 6:
 
-### 1. Thêm phần lý thuyết: API `create` cần trả về URI trên header 
+### 1. Thêm phần lý thuyết: API `create` cần trả về URI trên header
 
 ---
 
