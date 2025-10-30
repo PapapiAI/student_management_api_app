@@ -46,9 +46,9 @@ INSERT INTO students(full_name, age, email) VALUES ('Nguyen Van A', 20, 'vana@gm
 
 ---
 
-## 2) Giới thiệu Hibernate
+## 2) Hibernate
 
-### 2.1 Hibernate là gì
+### 2.1 Khái niệm
 
 > Hibernate là một `ORM framework` phổ biến nhất trong hệ sinh thái Java, gồm các tính năng:
 > * Quản lý ánh xạ Java class ↔ table trong DB
@@ -70,6 +70,105 @@ INSERT INTO students(full_name, age, email) VALUES ('Nguyen Van A', 20, 'vana@gm
 ```
 Hibernate config → SessionFactory → Session → Transaction → CRUD → Commit/Rollback → Close Session
 ```
+
+---
+
+## 3) JPA (Java Persistence API)
+
+### 3.1 Khái niệm
+
+> * Là chuẩn ORM trong Java
+> * Định nghĩa các annotation/entity, cách quản lý dữ liệu giữa Object ↔ Database
+> * JPA không tự giao tiếp DB mà cần Hibernate (hoặc ORM framework khác) để triển khai
+
+### 3.2 Annotation JPA phổ biến
+
+#### 3.2.1 Annotation cho Entity
+
+| Annotation             | Mục đích                             |
+|------------------------|--------------------------------------|
+| `@Entity`              | Định nghĩa 1 lớp là Entity trong ORM |
+| `@Table(...)`          | Ánh xạ Entity với tên bảng trong DB  |
+| `@Id`                  | Đánh dấu khóa chính                  |
+| `@GeneratedValue(...)` | Tự sinh giá trị ID                   |
+
+Ví dụ:
+
+```java
+@Entity
+@Table(name = "students", schema = "app")
+public class StudentEntity {
+  @Id
+  @GeneratedValue(strategy = GenerationType.UUID)
+  private UUID id;
+}
+```
+
+#### 3.2.2 Annotation cho cột
+
+| Annotation                             | Mục đích                                                         |
+|----------------------------------------|------------------------------------------------------------------|
+| `@Column(...)`                         | Tùy chỉnh column trong DB                                        |
+| `@Lob`                                 | Kiểu dữ liệu lớn (TEXT, BLOB)                                    |
+| `@Transient`                           | Không lưu xuống DB                                               |
+| `@Enumerated(EnumType.STRING/ORDINAL)` | Lưu enum trong DB                                                |
+| `@Temporal`                            | Chỉ định kiểu thời gian (DATE/TIME/TIMESTAMP) cho java.util.Date |
+
+Ví dụ:
+
+```java
+@Column(name = "email", nullable = false, unique = true, length = 200)
+private String email;
+
+@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+private Instant createdAt;
+```
+
+#### 3.2.3 Annotation cho quan hệ giữa các Entity
+
+| Annotation              | Kiểu quan hệ            |
+|-------------------------|-------------------------|
+| `@OneToOne`             | 1–1                     |
+| `@OneToMany`            | 1–N                     |
+| `@ManyToOne`            | N–1                     |
+| `@ManyToMany`           | N–N                     |
+| `@JoinColumn(name=...)` | Khóa ngoại              |
+| `@JoinTable(...)`       | Bảng trung gian cho N–N |
+
+Ví dụ quan hệ 1–N:
+
+```java
+@OneToMany(mappedBy = "student")
+private List<Enrollment> enrollments;
+```
+
+#### 3.2.4 Annotation cho lifecycle (vòng đời Entity)
+
+| Annotation     | Khi nào chạy       |
+|----------------|--------------------|
+| `@PrePersist`  | Trước khi insert   |
+| `@PostPersist` | Sau khi insert     |
+| `@PreUpdate`   | Trước khi update   |
+| `@PostUpdate`  | Sau khi update     |
+| `@PreRemove`   | Trước khi delete   |
+| `@PostRemove`  | Sau khi delete     |
+| `@PostLoad`    | Sau khi load từ DB |
+
+Ví dụ set timestamp:
+
+```java
+@PrePersist
+public void prePersist() {
+  createdAt = LocalDateTime.now();
+}
+```
+
+#### 3.2.5 Annotation cho caching / fetch
+
+| Annotation                             | Mục đích                                                         |
+|----------------------------------------|------------------------------------------------------------------|
+| `@Basic(fetch = LAZY/EAGER)`           | Cách fetch mặc định                                              |
+| `@NamedQuery`, `@NamedNativeQuery`     | Định nghĩa query cố định                                         |
 
 ---
 
@@ -118,7 +217,7 @@ Hibernate config → SessionFactory → Session → Transaction → CRUD → Com
 </hibernate-configuration>
 ```
 
-**Lưu ý:** 
+**Lưu ý:**
 * Hành vi Hibernate thực thi Auto DDL:
   * `validate`: hibernate sẽ so sánh shema giữa entity và DB, nếu khác → báo lỗi
   * `update`: hibernate tự sửa bảng ở DB cho khớp entity (ALTER TABLE) → chỉ nên dùng trong môi trường Dev
@@ -214,7 +313,7 @@ public class StudentEntity {
 }
 ```
 
-#### Giải thích Annotation 
+#### Giải thích Annotation
 
 > * `@Entity`: đánh dấu class là entity sẽ ánh xạ tới table trong DB
 > * `@Table`: khai báo tên bảng và schema
@@ -302,7 +401,7 @@ public class HibernateStudentDao {
       student.setFullName(fullName);
       student.setEmail(email);
       student.setAge(age);
-      
+
       session.persist(student);
       session.flush();
       session.refresh(student);
@@ -330,7 +429,7 @@ public class HibernateStudentDao {
 
 > Hibernate chuyển Object thành SQL INSERT/UPDATE/DELETE tương ứng
 
-**Lưu ý**: 
+**Lưu ý**:
 * Ở class `StudentEntity` cần Hibernate tự động sinh id, nếu không Hibernate sẽ insert vào bảng students ở DB với id là null, gây xung đột DB:
   * Hibernate ném lỗi `LogicalConnectionManagedImpl … is closed` khi cố thực hiện `session.persist(student)`
 
