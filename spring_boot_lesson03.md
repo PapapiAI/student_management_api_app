@@ -419,6 +419,16 @@ public class StudentService {
   }
 
   public List<StudentResponse> getAllStudents() {
+//    List<Student> students = repo.findAll();
+//    List<StudentResponse> responses = new ArrayList<>();
+//
+//    for (Student student : students) {
+//        StudentResponse res = toResponse(student);
+//        responses.add(res);
+//    }
+//
+//    return responses;
+
     // Using Stream to handle Collection data
     return repo.findAll().stream()
             .map(this::toResponse)
@@ -426,6 +436,15 @@ public class StudentService {
   }
 
   public StudentResponse getStudentById(UUID id) {
+//    Optional<Student> studentOtp = repo.findById(id);
+//
+//    if (studentOtp.isPresent()) {
+//        return toResponse(studentOtp.get());
+//    } else {
+//        throw new ResponseStatusException(
+//                HttpStatus.NOT_FOUND, "Not found student with id: " + id);
+//    }
+
     return repo.findById(id)
             .map(this::toResponse)
             .orElseThrow(() -> new ResponseStatusException(
