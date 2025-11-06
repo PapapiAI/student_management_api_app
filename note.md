@@ -18,13 +18,19 @@
 
 ---
 
-# Buổi 13: Spring Security Setup
+# Buổi 16: Case Study
 
-## Best practice
+## 1. Hướng dẫn lại buổi 1 về Deploy & Cấu hình Spring Boot theo mô hình 3-role
 
-### 1. Hardcode
+### 1.1 Deploy docker + deploy thêm service app spring boot
 
-### 2. Magic number
+### 1.2 Cấu hình Spring Boot theo mô hình 3-role
 
-### 3. Tạo file Setting để khỏi sửa code
+## 2. Best practice
+
+### 2.1 Hardcode
+
+### 2.2 Magic number
+
+### 2.3 Tạo file Setting để khỏi sửa code
 

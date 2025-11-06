@@ -55,6 +55,11 @@ public class OpenApiConfig {
     }
 
     // ===== Groups =====
+    @Value("${openapi.groups.persons.name}")
+    String personsGroupName;
+    @Value("${openapi.groups.persons.packages}")
+    String[] personsPackages;
+
     @Value("${openapi.groups.students.name}")
     String studentsGroupName;
     @Value("${openapi.groups.students.packages}")
@@ -64,6 +69,14 @@ public class OpenApiConfig {
     String demoGroupName;
     @Value("${openapi.groups.demo.packages}")
     String[] demoPackages;
+
+    @Bean
+    public GroupedOpenApi personsGroup() {
+        return GroupedOpenApi.builder()
+                .group(personsGroupName)
+                .packagesToScan(personsPackages)
+                .build();
+    }
 
     @Bean
     public GroupedOpenApi studentsGroup() {

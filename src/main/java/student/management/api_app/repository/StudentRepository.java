@@ -1,29 +1,19 @@
 package student.management.api_app.repository;
 
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import student.management.api_app.model.Student;
 
-import java.util.*;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public class StudentRepository {
-    private final Map<UUID, Student> db = new HashMap<>();
+public interface StudentRepository extends JpaRepository<Student, UUID> {
+    Optional<Student> findByStudentCode(String studentCode);
 
-    public List<Student> findAll() {
-        return new ArrayList<>(db.values());
-    }
+    boolean existsByStudentCode(String studentCode);
 
-    public Optional<Student> findById(UUID id) {
-        return Optional.ofNullable(db.get(id));
-    }
-
-    public Student save(Student s) {
-        if (s.getId() == null) s.setId(UUID.randomUUID());
-        db.put(s.getId(), s);
-        return s;
-    }
-
-    public void deleteById(UUID id) {
-        db.remove(id);
-    }
+    List<Student> findByEnrollmentYear(Integer enrollmentYear);
+    List<Student> findByPerson_FullNameContainingIgnoreCase(String keyword);
 }

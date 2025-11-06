@@ -1,7 +1,9 @@
 package student.management.api_app.dto.student;
 
+import student.management.api_app.dto.person.PersonCreateRequest;
+
 public record StudentCreateRequest(
-        String fullName,
-        Integer age,
-        String email
-) {}
+        PersonCreateRequest person,
+        StudentCreateOnlyRequest student
+) {
+}

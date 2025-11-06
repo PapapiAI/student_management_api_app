@@ -9,10 +9,10 @@ import java.time.Instant;
 @Value
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ApiResponse<T> {
+public class AppResponse<T> {
     boolean success;
     T data; // List/Object/Null
-    ApiError error;
+    AppError error;
 
     @Builder.Default
     Instant timestamp = Instant.now();
@@ -20,7 +20,7 @@ public class ApiResponse<T> {
     // No need for ApiError if using the RFC 7807 standard (Problem Details)
     @Value
     @Builder
-    public static class ApiError {
+    public static class AppError {
         String code;
         String message;
         String path;
