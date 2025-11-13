@@ -25,4 +25,23 @@ public class AppResponse<T> {
         String message;
         String path;
     }
+
+    // Factory method (static helper methods)
+    public static <T> AppResponse<T> success(T data) {
+        return AppResponse.<T>builder()
+                .success(true)
+                .data(data)
+                .build();
+    }
+
+    public static <T> AppResponse<T> error(String code, String message, String path) {
+        return AppResponse.<T>builder()
+                .success(false)
+                .error(AppError.builder()
+                        .code(code)
+                        .message(message)
+                        .path(path)
+                        .build())
+                .build();
+    }
 }

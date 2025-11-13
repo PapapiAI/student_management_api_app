@@ -6,11 +6,16 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import student.management.api_app.dto.AppResponse;
+import student.management.api_app.dto.page.PageResponse;
 import student.management.api_app.dto.student.*;
 import student.management.api_app.service.impl.StudentService;
 
@@ -28,45 +33,68 @@ public class StudentController {
     private final StudentService service;
 
     @Operation(
-            summary = "Get all students",
-            description = "Lấy danh sách tất cả học viên",
+            summary = "Get all students with pagination",
+            description = "Lấy danh sách tất cả học viên có phân trang",
             responses = @ApiResponse(responseCode = "200", description = "Success")
     )
     @GetMapping
-    public ResponseEntity<AppResponse<List<StudentListItemResponse>>> getAll() {
-        return ResponseEntity.ok(AppResponse.<List<StudentListItemResponse>>builder()
-                .success(true)
-                .data(service.getAll())
-                .error(null)
-                .build());
+    public ResponseEntity<AppResponse<PageResponse<StudentListItemResponse>>> getAll(
+            @ParameterObject @PageableDefault(size = 5)
+            Pageable pageable
+    ) {
+        return ResponseEntity.ok(AppResponse.success(service.getAll(pageable)));
     }
 
     @Operation(
-            summary = "Search students by person name",
-            description = "Tìm student theo tên Person (không phân biệt hoa/thường). " +
-                    "Trả về rỗng nếu keyword trống",
-            responses = @ApiResponse(responseCode = "200", description = "Success")
-    )
-    @GetMapping("/search")
-    public ResponseEntity<AppResponse<List<StudentListItemResponse>>> searchByPersonName(
-            @RequestParam("name") String keyword) {
-        return ResponseEntity.ok(AppResponse.<List<StudentListItemResponse>>builder()
-                .success(true)
-                .data(service.searchByPersonName(keyword))
-                .build());
-    }
-
-    @Operation(
-            summary = "List students by enrollment year",
-            description = "Lọc student theo enrollmentYear.",
+            summary = "List students by enrollment year with pagination",
+            description = "Lọc student theo enrollmentYear có phân trang",
             responses = @ApiResponse(responseCode = "200", description = "Success")
     )
     @GetMapping("/by-year")
-    public ResponseEntity<AppResponse<List<StudentListItemResponse>>> listByEnrollmentYear(
-            @RequestParam("year") Integer year) {
-        return ResponseEntity.ok(AppResponse.<List<StudentListItemResponse>>builder()
+    public ResponseEntity<AppResponse<PageResponse<StudentListItemResponse>>> listByEnrollmentYear(
+            @RequestParam("year") Integer year,
+            @PageableDefault(size = 5, sort = "enrollmentYear", direction = Sort.Direction.DESC)
+            @ParameterObject Pageable pageable) {
+        return ResponseEntity.ok(AppResponse.<PageResponse<StudentListItemResponse>>builder()
                 .success(true)
-                .data(service.listByEnrollmentYear(year))
+                .data(service.listByEnrollmentYear(year, pageable))
+                .build());
+    }
+
+    @Operation(
+            summary = "Search students by attributes",
+            description = """
+                    Tìm kiếm học viên với nhiều điều kiện tùy chọn:
+                    - name: chứa trong Person.fullName (ignore case)
+                    - phone: đúng với Person.phone (sau normalize)
+                    - email: chứa trong Person.contactEmail
+                    - studentCode: chứa trong studentCode
+                    - enrollmentYearFrom / enrollmentYearTo: khoảng năm nhập học
+                    Hỗ trợ phân trang & sort theo mọi field hợp lệ (kể cả person.fullName)
+                    """,
+            responses = @ApiResponse(responseCode = "200", description = "Success")
+    )
+    @GetMapping("/search")
+    public ResponseEntity<AppResponse<PageResponse<StudentListItemResponse>>> search(
+            @ParameterObject StudentSearchRequest req, // Để Swagger + Spring Doc hiểu khi bind từ query param
+            @ParameterObject @PageableDefault(
+                    size = 5, sort = {"createdAt", "person.fullName"}, direction = Sort.Direction.DESC)
+            Pageable pageable
+    ) {
+        return ResponseEntity.ok(AppResponse.success(service.search(req, pageable)));
+    }
+
+    @Operation(
+            summary = "Count students grouped by enrollment year",
+            description = "Thống kê số lượng student theo enrollmentYear. " +
+                    "Trả về danh sách DTO dạng (year, total)",
+            responses = @ApiResponse(responseCode = "200", description = "Success")
+    )
+    @GetMapping("stats/count-by-year")
+    public ResponseEntity<AppResponse<List<EnrollmentStatDTO>>> countByEnrollmentYear() {
+        return ResponseEntity.ok(AppResponse.<List<EnrollmentStatDTO>>builder()
+                .success(true)
+                .data(service.countStudentsGroupedByYear())
                 .build());
     }
 
@@ -104,6 +132,26 @@ public class StudentController {
         return ResponseEntity.ok(AppResponse.<StudentDetailResponse>builder()
                     .success(true)
                     .data(service.getByStudentCode(studentCode))
+                .build());
+    }
+
+    @Operation(
+            summary = "Get student by phone",
+            description = "Tìm student theo số điện thoại. Trả về 404 nếu không tìm thấy",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Success"),
+                    @ApiResponse(responseCode = "400", description = "Invalid phone",
+                            content = @Content(schema = @Schema(implementation = AppResponse.AppError.class))),
+                    @ApiResponse(responseCode = "404", description = "Student not found",
+                            content = @Content(schema = @Schema(implementation = AppResponse.AppError.class)))
+            }
+    )
+    @GetMapping("/by-phone")
+    public ResponseEntity<AppResponse<StudentDetailResponse>> getByPhone(
+            @RequestParam("phone") String phone) {
+        return ResponseEntity.ok(AppResponse.<StudentDetailResponse>builder()
+                .success(true)
+                .data(service.getByPhone(phone))
                 .build());
     }
 

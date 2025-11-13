@@ -4,17 +4,20 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import student.management.api_app.dto.person.PersonCreateRequest;
-import student.management.api_app.dto.person.PersonDetailResponse;
-import student.management.api_app.dto.person.PersonListItemResponse;
-import student.management.api_app.dto.person.PersonPatchRequest;
+import student.management.api_app.dto.page.PageResponse;
+import student.management.api_app.dto.person.*;
 import student.management.api_app.mapper.PersonMapper;
 import student.management.api_app.model.Person;
+import student.management.api_app.model.Student;
 import student.management.api_app.repository.PersonRepository;
+import student.management.api_app.repository.specification.PersonSpecifications;
 import student.management.api_app.service.IPersonService;
 import student.management.api_app.util.NormalizerUtil;
 
@@ -32,49 +35,51 @@ public class PersonService implements IPersonService {
 
     @Transactional(readOnly = true)
     @Override
-    public List<PersonListItemResponse> getAll() {
-        return repo.findAll()
-                .stream()
-                .map(mapper::toListItemResponse)
-                .toList();
+    public PageResponse<PersonListItemResponse> getAll(Pageable pageable) {
+        Page<Person> pageData = repo.findAll(pageable);
+        Page<PersonListItemResponse> mappedPageData = pageData.map(mapper::toListItemResponse);
+        return new PageResponse<>(mappedPageData);
     }
 
     @Transactional(readOnly = true)
     @Override
-    public List<PersonListItemResponse> searchByName(String keyword) {
-        String kw = NormalizerUtil.trimToNull(keyword);
-        if (kw == null) return List.of();
-        return repo.findByFullNameContainingIgnoreCase(kw)
-                .stream()
-                .map(mapper::toListItemResponse)
-                .toList();
+    public PageResponse<PersonListItemResponse> search(PersonSearchRequest req, Pageable pageable) {
+        String name = NormalizerUtil.trimToNull(req.name());
+        String phone = NormalizerUtil.normalizePhone(req.phone());
+        String email = NormalizerUtil.normalizeEmail(req.email());
+        String address = NormalizerUtil.trimToNull(req.address());
+
+        Specification<Person> spec = Specification.<Person>unrestricted()
+                .and(PersonSpecifications.fullNameContains(name))
+                .and(PersonSpecifications.phoneEquals(phone))
+                .and(PersonSpecifications.emailContains(email))
+                .and(PersonSpecifications.addressContains(address))
+                .and(PersonSpecifications.dobGte(req.dobFrom()))
+                .and(PersonSpecifications.dobLte(req.dobTo()));
+
+        Page<Person> pageData = repo.findAll(spec, pageable);
+        Page<PersonListItemResponse> mappedPageData =
+                pageData.map(mapper::toListItemResponse);
+
+        return new PageResponse<>(mappedPageData);
     }
 
     @Transactional(readOnly = true)
     @Override
-    public List<PersonListItemResponse> searchByContactEmail(String email) {
-        String normalized = NormalizerUtil.normalizeEmail(email);
-        if (normalized == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email is required");
+    public PageResponse<PersonListItemResponse> listByIds(Collection<UUID> ids, Pageable pageable) {
+        if (ids == null || ids.isEmpty()) {
+            return new PageResponse<>(Page.empty(pageable));
         }
 
-        return repo.findByContactEmailIgnoreCase(normalized)
-                .stream()
-                .map(mapper::toListItemResponse)
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    @Override
-    public List<PersonListItemResponse> listByIds(Collection<UUID> ids) {
-        if (ids == null || ids.isEmpty()) return List.of();
         Set<UUID> distinctIds = ids.stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        return repo.findAllById(distinctIds).stream()
-                .map(mapper::toListItemResponse)
-                .toList();
+        Page<Person> pageData = repo.findByIdIn(distinctIds, pageable);
+        Page<PersonListItemResponse> mappedPageData =
+                pageData.map(mapper::toListItemResponse);
+
+        return new PageResponse<>(mappedPageData);
     }
 
     @Transactional(readOnly = true)
