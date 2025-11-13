@@ -4,11 +4,18 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import student.management.api_app.dto.page.PageResponse;
 import student.management.api_app.dto.person.PersonCreateRequest;
+import student.management.api_app.dto.person.PersonSearchRequest;
 import student.management.api_app.dto.student.*;
 import student.management.api_app.mapper.StudentMapper;
 import student.management.api_app.model.Person;
@@ -20,6 +27,7 @@ import student.management.api_app.service.IStudentService;
 import java.util.List;
 import java.util.UUID;
 
+import static student.management.api_app.repository.specification.StudentSpecifications.*;
 import static student.management.api_app.util.NormalizerUtil.*;
 
 @Service
@@ -34,32 +42,63 @@ public class StudentService implements IStudentService {
 
     @Transactional(readOnly = true)
     @Override
-    public List<StudentListItemResponse> getAll() {
-        return studentRepo.findAll()
-                .stream()
-                .map(studentMapper::toListItemResponse)
-                .toList();
+    public PageResponse<StudentListItemResponse> getAll(Pageable pageable) {
+        // Dùng findAll(Pageable pageable) của PagingAndSortingRepository
+        Page<Student> pageData = studentRepo.findAll(pageable);
+
+        Page<StudentListItemResponse> mappedPageData =
+                pageData.map(studentMapper::toListItemResponse);
+        return new PageResponse<>(mappedPageData);
     }
 
     @Transactional(readOnly = true)
     @Override
-    public List<StudentListItemResponse> searchByPersonName(String keyword) {
-        String kw = trimToNull(keyword);
-        if (kw == null) return List.of();
-        return studentRepo.findByPerson_FullNameContainingIgnoreCase(kw)
-                .stream()
-                .map(studentMapper::toListItemResponse)
-                .toList();
+    public PageResponse<StudentListItemResponse> search(
+            StudentSearchRequest req, Pageable pageable) {
+
+        PersonSearchRequest pReq = req.person(); // Lưu ý có thể là null
+
+        String name = trimToNull(pReq != null ? pReq.name() : null);
+        String phone = normalizePhone(pReq != null ? pReq.phone() : null);
+        String email = normalizeEmail(pReq != null ? pReq.email() : null);
+        String code = normalizeCode(req.studentCode());
+
+        Specification<Student> spec = Specification.<Student>unrestricted()
+                .and(personNameContains(name))
+                .and(personPhoneEquals(phone))
+                .and(personEmailContains(email))
+                .and(personDobGte(pReq != null ? pReq.dobFrom() : null))
+                .and(personDobLte(pReq != null ? pReq.dobTo() : null))
+                .and(studentCodeContains(code))
+                .and(enrollmentYearGte(req.enrollmentYearFrom()))
+                .and(enrollmentYearLte(req.enrollmentYearTo()));
+
+        Page<Student> pageData = studentRepo.findAll(spec, pageable);
+
+        Page<StudentListItemResponse> mappedPageData =
+                pageData.map(studentMapper::toListItemResponse);
+
+        return new PageResponse<>(mappedPageData);
     }
 
     @Transactional(readOnly = true)
     @Override
-    public List<StudentListItemResponse> listByEnrollmentYear(Integer year) {
-        if (year == null) return List.of();
-        return studentRepo.findByEnrollmentYear(year)
-                .stream()
-                .map(studentMapper::toListItemResponse)
-                .toList();
+    public PageResponse<StudentListItemResponse> listByEnrollmentYear(
+            Integer year, Pageable pageable) {
+        Page<StudentListItemResponse> emptyPage = Page.empty(pageable);
+        if (year == null) return new PageResponse<>(emptyPage);
+
+        Page<Student> pageData = studentRepo.findByEnrollmentYear(year, pageable);
+        Page<StudentListItemResponse> mappedPageData =
+                pageData.map(studentMapper::toListItemResponse);
+
+        return new PageResponse<>(mappedPageData);
+    }
+
+    @Transactional(readOnly = true)
+    @Override
+    public List<EnrollmentStatDTO> countStudentsGroupedByYear() {
+        return studentRepo.countStudentsGroupedByYear();
     }
 
     @Transactional(readOnly = true)
@@ -80,6 +119,18 @@ public class StudentService implements IStudentService {
                 .map(studentMapper::toDetailResponse)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Student not found: " + studentCode));
+    }
+
+    @Transactional(readOnly = true)
+    @Override
+    public StudentDetailResponse getByPhone(String phone) {
+        String normalized = normalizePhone(phone);
+        if (normalized == null) throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST, "Phone is required");
+        return studentRepo.findByPhone(normalized)
+                .map(studentMapper::toDetailResponse)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Student not found with phone: " + phone));
     }
 
     @Transactional

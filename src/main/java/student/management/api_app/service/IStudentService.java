@@ -1,17 +1,22 @@
 package student.management.api_app.service;
 
+import org.springframework.data.domain.Pageable;
+import student.management.api_app.dto.page.PageResponse;
 import student.management.api_app.dto.student.*;
 
 import java.util.List;
 import java.util.UUID;
 
 public interface IStudentService {
-    List<StudentListItemResponse> getAll();
-    List<StudentListItemResponse> searchByPersonName(String keyword);
-    List<StudentListItemResponse> listByEnrollmentYear(Integer year);
+    PageResponse<StudentListItemResponse> getAll(Pageable pageable);
+    PageResponse<StudentListItemResponse> search(StudentSearchRequest req, Pageable pageable);
+
+    PageResponse<StudentListItemResponse> listByEnrollmentYear(Integer year, Pageable pageable);
+    List<EnrollmentStatDTO> countStudentsGroupedByYear();
 
     StudentDetailResponse getById(UUID id);
     StudentDetailResponse getByStudentCode(String studentCode);
+    StudentDetailResponse getByPhone(String phone);
 
     StudentDetailResponse create(StudentCreateRequest req);
     StudentDetailResponse createFromExistingPerson(StudentCreateFromPersonRequest req);

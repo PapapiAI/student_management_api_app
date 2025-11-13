@@ -5,15 +5,17 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import student.management.api_app.dto.AppResponse;
-import student.management.api_app.dto.person.PersonCreateRequest;
-import student.management.api_app.dto.person.PersonDetailResponse;
-import student.management.api_app.dto.person.PersonListItemResponse;
-import student.management.api_app.dto.person.PersonPatchRequest;
+import student.management.api_app.dto.page.PageResponse;
+import student.management.api_app.dto.person.*;
 import student.management.api_app.service.IPersonService;
 
 import java.net.URI;
@@ -28,66 +30,50 @@ public class PersonController {
     private final IPersonService service;
 
     @Operation(
-            summary = "Get all persons",
-            description = "Lấy danh sách tất cả person",
+            summary = "Get all persons with pagination",
+            description = "Lấy danh sách tất cả person có phân trang",
             responses = @ApiResponse(responseCode = "200", description = "Success")
     )
     @GetMapping
-    public ResponseEntity<AppResponse<List<PersonListItemResponse>>> getAll() {
-        return ResponseEntity.ok(AppResponse.<List<PersonListItemResponse>>builder()
-                .success(true)
-                .data(service.getAll())
-                .build());
+    public ResponseEntity<AppResponse<PageResponse<PersonListItemResponse>>> getAll(
+            @ParameterObject
+            @PageableDefault(size = 5, sort = "createdAt", direction = Sort.Direction.DESC)
+            Pageable pageable) {
+        return ResponseEntity.ok(AppResponse.success(service.getAll(pageable)));
     }
 
     @Operation(
-            summary = "Search persons by name",
-            description = "Tìm person theo tên (không phân biệt hoa/thường). " +
-                    "Trả về danh sách rỗng nếu keyword trống",
+            summary = "Search persons by attribute",
+            description = """
+                    Tìm kiếm person với nhiều điều kiện tùy chọn:
+                    - name: chứa trong fullName (ignore case)
+                    - phone: đúng với phone (sau normalize)
+                    - email: chứa trong contactEmail
+                    - dobFrom / dobTo: khoảng năm sinh
+                    \nHỗ trợ phân trang & sort theo mọi field hợp lệ
+                    """,
             responses = @ApiResponse(responseCode = "200", description = "Success")
     )
     @GetMapping("/search")
-    public ResponseEntity<AppResponse<List<PersonListItemResponse>>> searchByName(
-            @RequestParam("name") String keyword) {
-        return ResponseEntity.ok(AppResponse.<List<PersonListItemResponse>>builder()
-                .success(true)
-                .data(service.searchByName(keyword))
-                .build());
-    }
-
-
-    @Operation(
-            summary = "Search persons by contact email",
-            description = "Tìm person theo email liên hệ (không phân biệt hoa/thường)",
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "Success"),
-                    @ApiResponse(responseCode = "400", description = "Email is required",
-                            content = @Content(schema = @Schema(
-                                    implementation = AppResponse.AppError.class)))
-            }
-    )
-    @GetMapping("/search-by-email")
-    public ResponseEntity<AppResponse<List<PersonListItemResponse>>> searchByContactEmail(
-            @RequestParam("email") String email) {
-        return ResponseEntity.ok(AppResponse.<List<PersonListItemResponse>>builder()
-                .success(true)
-                .data(service.searchByContactEmail(email))
-                .build());
+    public ResponseEntity<AppResponse<PageResponse<PersonListItemResponse>>> search(
+            @ParameterObject PersonSearchRequest req,
+            @PageableDefault(size = 5, sort = {"createdAt", "fullName"}, direction = Sort.Direction.DESC)
+            @ParameterObject Pageable pageable) {
+        return ResponseEntity.ok(AppResponse.success(service.search(req, pageable)));
     }
 
     @Operation(
-            summary = "List persons by IDs",
+            summary = "List persons by IDs with pagination",
             description = "Nhận danh sách UUID qua body (POST) để tránh giới hạn độ dài URL." +
-                    "Trả về danh sách rỗng nếu danh sách UUID trống",
+                    "Trả về danh sách rỗng nếu danh sách UUID trống có phân trang",
             responses = @ApiResponse(responseCode = "200", description = "Success")
     )
     @PostMapping("/list-by-ids") // POST body để không giới hạn độ dài URL
-    public ResponseEntity<AppResponse<List<PersonListItemResponse>>> listByIds(
-            @RequestBody Collection<UUID> ids) {
-        return ResponseEntity.ok(AppResponse.<List<PersonListItemResponse>>builder()
-                .success(true)
-                .data(service.listByIds(ids))
-                .build());
+    public ResponseEntity<AppResponse<PageResponse<PersonListItemResponse>>> listByIds(
+            @RequestBody Collection<UUID> ids,
+            @PageableDefault(size = 5, sort = {"createdAt", "fullName"}, direction = Sort.Direction.DESC)
+            @ParameterObject Pageable pageable) {
+        return ResponseEntity.ok(AppResponse.success(service.listByIds(ids, pageable)));
     }
 
     @Operation(
